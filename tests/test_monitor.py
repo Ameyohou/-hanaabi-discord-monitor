@@ -115,6 +115,23 @@ class StateTests(unittest.TestCase):
         self.assertFalse(self.state['alerted'])
         self.run_monitor(fetch=fail_fetch)
         self.assertTrue(self.state['alerted'])
+    def test_webhook_normalizes_official_urls(self):
+        urls = ['  https://discord.com/api/webhooks/123/abc\n',
+                'https://discordapp.com/api/webhooks/123/a.b_-/',
+                'https://discord.com/api/v10/webhooks/123/abc?wait=false&thread_id=456']
+        for url in urls:
+            calls = []
+            m.discord('test', {'DISCORD_WEBHOOK_URL': url}, lambda endpoint, **k: calls.append(endpoint))
+            self.assertIn('wait=true', calls[0])
+            self.assertNotIn('wait=false', calls[0])
+    def test_webhook_rejects_untrusted_or_incomplete_urls(self):
+        for url in ['', 'http://discord.com/api/webhooks/123/abc',
+                    'https://discord.com.evil.example/api/webhooks/123/abc',
+                    'https://discord.com/channels/123/456',
+                    'https://discord.com/api/webhooks/123',
+                    'https://discord.com/api/webhooks/123/abc?thread_id=bad']:
+            with self.subTest(url=url), self.assertRaises(m.MonitorError):
+                m.discord('test', {'DISCORD_WEBHOOK_URL': url}, lambda *a, **k: self.fail('must not send'))
     def test_mentions_disabled_and_length(self):
         calls = []
         m.discord('@everyone' * 500, {'DISCORD_WEBHOOK_URL':'https://discord.com/api/webhooks/123/abc'}, lambda *a, **k: calls.append(k))

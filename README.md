@@ -122,7 +122,7 @@ PCにPython 3.12以上がある場合、解凍したフォルダーで以下を�
 python -m unittest discover -s tests -v
 ```
 
-18件：401/403/429/500、タイムアウト、不正JSON、欠落フィールド、2ページ目の失敗、ページング・循環、FEED選別、空一覧、初回・重複抑止、3回連続失敗と復旧、Discord送信失敗、送信前保存失敗、長時間空白からの補完、メンション抑止を検証。API応答は模擬しているため、この合格だけでは実Instagramの取得成功を示しません。
+20件：401/403/429/500、タイムアウト、不正JSON、欠落フィールド、2ページ目の失敗、ページング・循環、FEED選別、空一覧、初回・重複抑止、3回連続失敗と復旧、Discord送信失敗、送信前保存失敗、長時間空白からの補完、メンション抑止を検証。API応答は模擬しているため、この合格だけでは実Instagramの取得成功を示しません。
 
 ## 公式APIが使えない場合の代替案
 
@@ -139,3 +139,5 @@ python -m unittest discover -s tests -v
 - [Discord Webhook](https://discord.com/developers/docs/resources/webhook)
 
 今回確認した自分側Instagram IDは `17841464909360076`、APIバージョンは `v27.0` です。長期トークンの有効期限は利用者確認で2027年1月19日。更新目安は1月12日です（リマインダーの自動設定はしていません）。トークンは共有せず、`META_ACCESS_TOKEN` Secretに登録してください。
+
+Webhook URLは前後の空白を除去し、discord.com、discordapp.com、canary.discord.com、ptb.discord.comのHTTPS Webhookを受け付けます。チャンネルのURLやWebhook IDだけは使えません。

@@ -94,10 +94,27 @@ def fetch_posts(env, request=request_json):
 
 
 def discord(text, env, request=request_json):
-    url = env.get('DISCORD_WEBHOOK_URL', '')
-    if not re.fullmatch(r'https://discord\.com/api/webhooks/\d+/[A-Za-z0-9_-]+', url):
-        raise MonitorError('invalid or missing DISCORD_WEBHOOK_URL')
-    request(url + '?wait=true', payload={'content': text[:1900], 'allowed_mentions': {'parse': []}})
+    raw = env.get('DISCORD_WEBHOOK_URL', '').strip()
+    if not raw:
+        raise MonitorError('DISCORD_WEBHOOK_URL Secret is empty')
+    try:
+        url = urllib.parse.urlsplit(raw)
+        if (url.scheme != 'https' or url.netloc not in ('discord.com', 'discordapp.com',
+                'canary.discord.com', 'ptb.discord.com') or url.fragment):
+            raise MonitorError('DISCORD_WEBHOOK_URL: use Copy Webhook URL in Discord channel settings; expected HTTPS Discord host')
+        if not re.fullmatch(r'/api/(?:v[0-9]+/)?webhooks/[0-9]+/[A-Za-z0-9_.-]+/?', url.path):
+            raise MonitorError('DISCORD_WEBHOOK_URL: expected /api/webhooks/ID/TOKEN; channel links and webhook IDs alone are not valid')
+        query = urllib.parse.parse_qs(url.query, keep_blank_values=True, strict_parsing=True)
+        if set(query) - {'wait', 'thread_id', 'with_components'}:
+            raise MonitorError('DISCORD_WEBHOOK_URL: unexpected query parameters')
+        if 'thread_id' in query and (len(query['thread_id']) != 1 or not query['thread_id'][0].isdigit()):
+            raise MonitorError('DISCORD_WEBHOOK_URL: invalid thread_id')
+        query['wait'] = ['true']
+        endpoint = urllib.parse.urlunsplit((url.scheme, url.netloc, url.path.rstrip('/'),
+            urllib.parse.urlencode(query, doseq=True), ''))
+    except ValueError:
+        raise MonitorError('DISCORD_WEBHOOK_URL: malformed URL; copy it again from Discord') from None
+    request(endpoint, payload={'content': text[:1900], 'allowed_mentions': {'parse': []}})
 
 
 def initial_state():
