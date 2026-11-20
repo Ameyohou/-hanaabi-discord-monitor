@@ -122,7 +122,7 @@ PCにPython 3.12以上がある場合、解凍したフォルダーで以下を�
 python -m unittest discover -s tests -v
 ```
 
-22件：401/403/429/500、タイムアウト、不正JSON、欠落フィールド、2ページ目の失敗、ページング・循環、FEED選別、空一覧、初回・重複抑止、3回連続失敗と復旧、Discord送信失敗、送信前保存失敗、長時間空白からの補完、メンション抑止を検証。API応答は模擬しているため、この合格だけでは実Instagramの取得成功を示しません。
+26件：401/403/429/500、タイムアウト、不正JSON、欠落フィールド、2ページ目の失敗、ページング・循環、FEED選別、空一覧、初回・重複抑止、3回連続失敗と復旧、Discord送信失敗、送信前保存失敗、長時間空白からの補完、メンション抑止を検証。API応答は模擬しているため、この合格だけでは実Instagramの取得成功を示しません。
 
 ## 公式APIが使えない場合の代替案
 
@@ -141,3 +141,13 @@ python -m unittest discover -s tests -v
 今回確認した自分側Instagram IDは `17841464909360076`、APIバージョンは `v27.0` です。長期トークンの有効期限は利用者確認で2027年1月19日。更新目安は1月12日です（リマインダーの自動設定はしていません）。トークンは共有せず、`META_ACCESS_TOKEN` Secretに登録してください。
 
 Webhook URLは前後の空白を除去し、discord.com、discordapp.com、canary.discord.com、ptb.discord.comのHTTPS Webhookを受け付けます。チャンネルのURLやWebhook IDだけは使えません。
+
+## BBC Newsでの実投稿テスト
+
+`BBC test monitor` を追加しました。初回はデプロイ時に自動実行し、以後毎時23分・53分に `bbcnews` を公式Business Discoveryで確認します。南陽醸造は従来どおり毎時17分・47分です。両ワークフローは同じconcurrencyグループで直列化し、状態コミットの競合を防ぎます。
+
+BBCの状態は `state/bbcnews.json` に分離し、通知には `【テスト】BBC News` を付けます。初回成功時は直近100メディア内の通常投稿を記録するだけで通知しません。次回以降は全通常投稿が既知のページに到達するまで遡り、未通知のFEED投稿のみ通知します。リールは対象外。最大20ページで境界に到達しなければ部分取得を成功扱いせずエラーになります。BBCの全アーカイブは取得しません。
+
+`Actions → BBC test monitor` の初回が緑になり、ログで `bbcnews: initialized=True` を確認できれば初期化成功です。公式APIからBBCを取得できない場合はログに失敗を記録し、成功とは報告しません。新しい通常投稿が届いた後に手動のRun workflowで再確認し、同じ投稿が再通知されないことも確認できます。実投稿がいつ公開されるかは保証できません。
+
+テスト終了時はSettings → Secrets and variables → Actions → Variablesに `BBC_TEST_ENABLED` を値 `false` で追加して停止します。南陽醸造の監視は続行します。再開時に記録は維持されます。BBCの投稿がDiscordに届くことは配送の確認であり、スマホのプッシュ通知設定はDiscordとOS側で別途確認してください。

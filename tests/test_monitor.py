@@ -74,6 +74,48 @@ class FetchTests(unittest.TestCase):
         with self.assertRaises(m.MonitorError):
             m.fetch_posts(ENV, lambda *a, **k: response([post()], {'next': 'x', 'cursors': {'after': 'abc'}}))
 
+class BBCTests(unittest.TestCase):
+    def response(self, rows, cursor='abc'):
+        data = response(rows, {'cursors': {'after': cursor}})
+        data['business_discovery']['username'] = 'bbcnews'
+        return data
+    def test_bbc_baseline_reads_only_recent_page(self):
+        calls = []
+        def fetch(url, **kw):
+            calls.append(url)
+            return self.response([post('1')])
+        self.assertEqual(len(m.fetch_posts(ENV, fetch, target='bbcnews', recent_baseline=True)), 1)
+        self.assertEqual(len(calls), 1)
+        self.assertIn('bbcnews', calls[0])
+    def test_bbc_backfills_until_entire_feed_page_known(self):
+        pages = iter([self.response([post('3'), post('1')]), self.response([post('2')], 'def')])
+        rows = m.fetch_posts(ENV, lambda *a, **k: next(pages), target='bbcnews', known_ids={'1','2'})
+        self.assertEqual({p['id'] for p in rows}, {'1','2','3'})
+    def test_bbc_must_not_accept_other_account(self):
+        with self.assertRaises(m.MonitorError):
+            m.fetch_posts(ENV, lambda *a, **k: response([post()]), target='bbcnews', recent_baseline=True)
+    def test_bbc_main_state_is_separate_and_notification_label(self):
+        import os, tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            original = os.getcwd()
+            try:
+                os.chdir(tmp)
+                Path('state').mkdir()
+                Path('state/state.json').write_text('production sentinel')
+                with patch.dict(os.environ, {'PERSIST_GIT':'false'}), patch('monitor.fetch_posts', return_value=[post('1')]):
+                    self.assertEqual(m.main('bbcnews'), 0)
+                self.assertEqual(Path('state/state.json').read_text(), 'production sentinel')
+                self.assertTrue(__import__('json').loads(Path('state/bbcnews.json').read_text())['initialized'])
+                messages=[]
+                with patch.dict(os.environ, {'PERSIST_GIT':'false'}), patch('monitor.fetch_posts', return_value=[post('1'),post('2')]), patch('monitor.discord', side_effect=lambda text, env: messages.append(text)):
+                    self.assertEqual(m.main('bbcnews'), 0)
+                    self.assertEqual(m.main('bbcnews'), 0)
+                self.assertEqual(len(messages),1)
+                self.assertIn('【テスト】BBC News',messages[0])
+            finally:
+                os.chdir(original)
+
 class StateTests(unittest.TestCase):
     def setUp(self):
         self.state = m.initial_state()

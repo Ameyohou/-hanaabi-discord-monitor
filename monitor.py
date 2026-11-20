@@ -53,7 +53,7 @@ def timestamp(value):
         raise MonitorError('invalid post timestamp') from None
 
 
-def fetch_posts(env, request=request_json):
+def fetch_posts(env, request=request_json, *, target=TARGET, known_ids=None, recent_baseline=False):
     token = env.get('META_ACCESS_TOKEN', '').strip()
     user = env.get('META_IG_USER_ID', '').strip()
     version = env.get('META_API_VERSION', '').strip()
@@ -64,11 +64,11 @@ def fetch_posts(env, request=request_json):
     posts, cursors, after = {}, set(), None
     for _ in range(20):
         suffix = '.after(' + after + ')' if after else ''
-        fields = f'business_discovery.username({TARGET}){{username,media.limit(100){suffix}{{id,caption,permalink,timestamp,media_product_type}}}}'
+        fields = f'business_discovery.username({target}){{username,media.limit(100){suffix}{{id,caption,permalink,timestamp,media_product_type}}}}'
         data = request('https://graph.facebook.com/' + version + '/' + user + '?' + urllib.parse.urlencode({'fields': fields}), token=token)
         try:
             discovery = data['business_discovery']
-            if discovery['username'].lower() != TARGET:
+            if discovery['username'].lower() != target:
                 raise ValueError()
             media = discovery['media']
             rows = media['data']
@@ -88,6 +88,11 @@ def fetch_posts(env, request=request_json):
                 if 'caption' in p and not isinstance(p['caption'], str):
                     raise ValueError()
                 posts[p['id']] = p
+            # Test account: baseline only the recent page, then page back to an
+            # entirely known FEED page. Do not scan a large news archive each run.
+            page_feed = [p for p in rows if p['media_product_type'] == 'FEED']
+            if recent_baseline or (known_ids and page_feed and all(p['id'] in known_ids for p in page_feed)):
+                return sorted(posts.values(), key=lambda p: (timestamp(p['timestamp']), p['id']))
             paging = media.get('paging', {})
             cursor = paging.get('cursors', {}).get('after')
             if not rows or (not cursor and not paging.get('next')):
@@ -130,7 +135,7 @@ def initial_state():
             'failures': 0, 'alerted': False, 'last_success': None, 'last_run': None}
 
 
-def run(state, fetch, send, save, now):
+def run(state, fetch, send, save, now, label="南陽醸造"):
     state['last_run'] = now.isoformat()
     try:
         if state['pending']:
@@ -146,14 +151,14 @@ def run(state, fetch, send, save, now):
                 state['pending'] = p['id']
                 save(state)  # Durable BEFORE sending: no blind retry after a crash.
                 local = timestamp(p['timestamp']).astimezone(dt.timezone(dt.timedelta(hours=9)))
-                send(f'南陽醸造 新規投稿\n投稿日時: {local:%Y-%m-%d %H:%M:%S} JST\n{p["permalink"]}\n{p.get("caption", "（本文なし／取得不可）")[:1500]}')
+                send(f'{label} 新規投稿\n投稿日時: {local:%Y-%m-%d %H:%M:%S} JST\n{p["permalink"]}\n{p.get("caption", "（本文なし／取得不可）")[:1500]}')
                 state['seen'].append(p['id'])
                 state['pending'] = None
                 save(state)
         if state['last_success'] and now - timestamp(state['last_success']) > dt.timedelta(minutes=90):
-            send('監視の空白を検出しました（前回成功から90分超）。取得可能な投稿を再確認しました。')
+            send(f'{label}: 監視の空白を検出しました（前回成功から90分超）。取得可能な投稿を再確認しました。')
         if state['alerted']:
-            send('Instagram投稿取得が復旧しました。')
+            send(f'{label}: Instagram投稿取得が復旧しました。')
         state.update(failures=0, alerted=False, last_success=now.isoformat())
         save(state)
         return 0
@@ -163,7 +168,7 @@ def run(state, fetch, send, save, now):
         print('ERROR:', e, file=sys.stderr)
         if state['failures'] >= 3 and not state['alerted']:
             try:
-                send(f'Instagram監視障害: {state["failures"]}回連続失敗。GitHub Actionsのログを確認してください。\n{e}')
+                send(f'{label}: Instagram監視障害: {state["failures"]}回連続失敗。GitHub Actionsのログを確認してください。\n{e}')
                 state['alerted'] = True
             except MonitorError:
                 print('ERROR: failure alert delivery failed', file=sys.stderr)
@@ -171,8 +176,11 @@ def run(state, fetch, send, save, now):
         return 1
 
 
-def main():
-    path = Path('state/state.json')
+def main(target=TARGET):
+    if target not in (TARGET, 'bbcnews'):
+        raise MonitorError('unsupported target')
+    is_bbc = target == 'bbcnews'
+    path = Path('state/bbcnews.json' if is_bbc else 'state/state.json')
     if path.exists():
         try:
             state = json.loads(path.read_text())
@@ -190,7 +198,7 @@ def main():
                 timestamp(state['last_success'])
         except (ValueError, TypeError, AttributeError):
             raise MonitorError('state corrupted; restore from Git history') from None
-    elif os.environ.get('INITIALIZE') == 'true':
+    elif is_bbc or os.environ.get('INITIALIZE') == 'true':
         state = initial_state()
     else:
         raise MonitorError('state missing; use manual initialize=true only for first setup')
@@ -207,13 +215,18 @@ def main():
             if changed:
                 subprocess.run(['git', 'commit', '-m', 'Update monitor state [skip ci]'], check=True, stdout=subprocess.DEVNULL)
                 subprocess.run(['git', 'push', 'origin', 'HEAD'], check=True, stdout=subprocess.DEVNULL)
-    return run(state, lambda: fetch_posts(os.environ), lambda s: discord(s, os.environ), save,
-               dt.datetime.now(dt.timezone.utc))
+    result = run(state, lambda: fetch_posts(os.environ, target=target,
+                   known_ids=set(state['seen']) if is_bbc and state['initialized'] else None,
+                   recent_baseline=is_bbc and not state['initialized']),
+                 lambda s: discord(s, os.environ), save,
+                 dt.datetime.now(dt.timezone.utc), label='【テスト】BBC News' if is_bbc else '南陽醸造')
+    print(f'{target}: initialized={state["initialized"]}, seen={len(state["seen"])}, failures={state["failures"]}')
+    return result
 
 
 if __name__ == '__main__':
     try:
-        sys.exit(main())
+        sys.exit(main('bbcnews' if sys.argv[1:] == ['--bbc'] else TARGET))
     except MonitorError as e:
         print('ERROR:', e, file=sys.stderr)
         sys.exit(1)
