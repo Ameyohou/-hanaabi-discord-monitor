@@ -23,8 +23,9 @@
     "18198104362402692"
   ],
   "pending": null,
-  "failures": 0,
+  "failures": 1,
   "alerted": false,
   "last_success": "2026-11-20T14:29:52.504355+00:00",
-  "last_run": "2026-11-20T14:29:52.504355+00:00"
+  "last_run": "2026-11-20T21:59:31.192323+00:00",
+  "last_error": "HTTP 401; no automatic retry"
 }
