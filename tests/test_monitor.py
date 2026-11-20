@@ -22,6 +22,26 @@ class FetchTests(unittest.TestCase):
                 with self.assertRaises(m.MonitorError) as e:
                     m.request_json('https://example.com')
                 self.assertNotIn('secret', str(e.exception))
+    def test_credentials_trimmed_and_internal_newline_rejected(self):
+        env = {k: '  ' + v + '\n' for k, v in ENV.items()}
+        tokens = []
+        def fetch(url, **kw):
+            tokens.append(kw['token'])
+            return response([])
+        m.fetch_posts(env, fetch)
+        self.assertEqual(tokens, ['secret'])
+        env['META_ACCESS_TOKEN'] = 'secret\nsecret'
+        with self.assertRaises(m.MonitorError) as error:
+            m.fetch_posts(env, fetch)
+        self.assertNotIn('secret', str(error.exception))
+    def test_safe_distinct_network_and_header_errors(self):
+        for failure, expected in [(urllib.error.URLError(TimeoutError('secret')), 'network connection failed (TimeoutError)'),
+                                  (ValueError('secret'), 'invalid request/header')]:
+            with patch('urllib.request.urlopen', side_effect=failure):
+                with self.assertRaises(m.MonitorError) as error:
+                    m.request_json('https://example.com')
+                self.assertIn(expected, str(error.exception))
+                self.assertNotIn('secret', str(error.exception))
     def test_bad_json(self):
         with patch('urllib.request.urlopen') as p:
             p.return_value.__enter__.return_value.read.return_value = b'<html>login</html>'

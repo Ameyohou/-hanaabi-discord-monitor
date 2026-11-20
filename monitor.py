@@ -33,8 +33,14 @@ def request_json(url, *, token=None, payload=None):
     except urllib.error.HTTPError as e:
         # Never print exception URLs, response bodies, tokens or webhook secrets.
         raise MonitorError(f'HTTP {e.code}; no automatic retry') from None
-    except (OSError, ValueError):
-        raise MonitorError('network failure or invalid JSON') from None
+    except json.JSONDecodeError:
+        raise MonitorError('response was not valid JSON') from None
+    except urllib.error.URLError as e:
+        raise MonitorError('network connection failed (' + type(e.reason).__name__ + ')') from None
+    except OSError as e:
+        raise MonitorError('network I/O failed (' + type(e).__name__ + ')') from None
+    except (ValueError, UnicodeError):
+        raise MonitorError('invalid request/header; check Secrets for embedded newlines or non-ASCII characters') from None
 
 
 def timestamp(value):
@@ -48,11 +54,13 @@ def timestamp(value):
 
 
 def fetch_posts(env, request=request_json):
-    token = env.get('META_ACCESS_TOKEN', '')
-    user = env.get('META_IG_USER_ID', '')
-    version = env.get('META_API_VERSION', '')
+    token = env.get('META_ACCESS_TOKEN', '').strip()
+    user = env.get('META_IG_USER_ID', '').strip()
+    version = env.get('META_API_VERSION', '').strip()
     if not token or not re.fullmatch(r'\d+', user) or not re.fullmatch(r'v\d+\.0', version):
         raise MonitorError('configure META_ACCESS_TOKEN, META_IG_USER_ID and META_API_VERSION')
+    if any(ord(c) < 33 or ord(c) > 126 for c in token):
+        raise MonitorError('META_ACCESS_TOKEN contains whitespace or non-ASCII characters; paste the token as one line')
     posts, cursors, after = {}, set(), None
     for _ in range(20):
         suffix = '.after(' + after + ')' if after else ''
