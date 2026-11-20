@@ -1,0 +1,46 @@
+name: Verify connection
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'fetch=公式API取得のみ / discord=テスト通知を1件送信'
+        type: choice
+        options: [fetch, discord]
+        default: fetch
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Verify selected connection
+        env:
+          MODE: ${{ inputs.mode }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_IG_USER_ID: ${{ secrets.META_IG_USER_ID }}
+          META_API_VERSION: ${{ vars.META_API_VERSION }}
+        run: |
+          python - <<'PY'
+          import os
+          from monitor import fetch_posts, discord, MonitorError
+          try:
+              if os.environ['MODE'] == 'discord':
+                  discord('南陽醸造 投稿監視システムの接続テストです。', os.environ)
+                  print('Discord test delivered')
+              else:
+                  posts = fetch_posts(os.environ)
+                  print('Validated FEED posts:', len(posts))
+                  if posts:
+                      print('Latest timestamp:', posts[-1]['timestamp'])
+                  else:
+                      raise MonitorError('No feed posts returned; confirm target before initializing')
+          except MonitorError as e:
+              print('ERROR:', e)
+              raise SystemExit(1)
+          PY
