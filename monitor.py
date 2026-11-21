@@ -89,9 +89,9 @@ def fetch_posts(env, request=request_json, *, target=TARGET, known_ids=None, rec
                     raise ValueError()
                 posts[p['id']] = p
             # Test account: baseline only the recent page, then page back to an
-            # entirely known FEED page. Do not scan a large news archive each run.
+            # page overlapping the previous FEED baseline. Do not scan a large news archive each run.
             page_feed = [p for p in rows if p['media_product_type'] == 'FEED']
-            if recent_baseline or (known_ids and page_feed and all(p['id'] in known_ids for p in page_feed)):
+            if recent_baseline or (known_ids and page_feed and any(p['id'] in known_ids for p in page_feed)):
                 return sorted(posts.values(), key=lambda p: (timestamp(p['timestamp']), p['id']))
             paging = media.get('paging', {})
             cursor = paging.get('cursors', {}).get('after')

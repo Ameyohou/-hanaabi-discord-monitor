@@ -87,10 +87,20 @@ class BBCTests(unittest.TestCase):
         self.assertEqual(len(m.fetch_posts(ENV, fetch, target='bbcnews', recent_baseline=True)), 1)
         self.assertEqual(len(calls), 1)
         self.assertIn('bbcnews', calls[0])
-    def test_bbc_backfills_until_entire_feed_page_known(self):
-        pages = iter([self.response([post('3'), post('1')]), self.response([post('2')], 'def')])
+    def test_bbc_backfills_until_feed_baseline_overlap(self):
+        pages = iter([self.response([post('3')]), self.response([post('2'), post('1')], 'def')])
         rows = m.fetch_posts(ENV, lambda *a, **k: next(pages), target='bbcnews', known_ids={'1','2'})
         self.assertEqual({p['id'] for p in rows}, {'1','2','3'})
+    def test_mixed_first_page_stops_before_unrecorded_archive(self):
+        calls = []
+        def fetch(url, **kw):
+            calls.append(url)
+            if len(calls) > 1:
+                self.fail('older archive must not be fetched after baseline overlap')
+            return self.response([post('3'), post('2'), post('1')])
+        rows = m.fetch_posts(ENV, fetch, target='bbcnews', known_ids={'1', '2'})
+        self.assertEqual({p['id'] for p in rows}, {'1', '2', '3'})
+        self.assertEqual(len(calls), 1)
     def test_bbc_must_not_accept_other_account(self):
         with self.assertRaises(m.MonitorError):
             m.fetch_posts(ENV, lambda *a, **k: response([post()]), target='bbcnews', recent_baseline=True)

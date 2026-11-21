@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - '.github/workflows/bbc-test.yml'
+      - 'monitor.py'
   schedule:
     - cron: '23,53 * * * *'
   workflow_dispatch:
