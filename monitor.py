@@ -31,8 +31,29 @@ def request_json(url, *, token=None, payload=None):
                 raise MonitorError('response too large')
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
-        # Never print exception URLs, response bodies, tokens or webhook secrets.
-        raise MonitorError(f'HTTP {e.code}; no automatic retry') from None
+        # Extract only safe numeric codes and fixed classifications, never raw
+        # messages/URLs: Meta may echo credentials in diagnostic strings.
+        detail = ''
+        try:
+            err = json.loads(e.read(65536)).get('error', {})
+            fields = []
+            for key in ('code', 'error_subcode'):
+                if type(err.get(key)) is int:
+                    fields.append(f'{key}={err[key]}')
+            message = str(err.get('message', '')).lower()
+            categories = [('expired', 'token_expired'), ('invalidated', 'token_invalidated'),
+                          ('access token', 'token_error'), ('permission', 'permission_error'),
+                          ('limit', 'api_limit'), ('unsupported', 'unsupported_request'),
+                          ('nonexisting field', 'unsupported_field')]
+            for phrase, category in categories:
+                if phrase in message:
+                    fields.append(category)
+                    break
+            if fields:
+                detail = ' (Meta ' + ', '.join(fields) + ')'
+        except (ValueError, TypeError, AttributeError, OSError):
+            pass
+        raise MonitorError(f'HTTP {e.code}{detail}; no automatic retry') from None
     except json.JSONDecodeError:
         raise MonitorError('response was not valid JSON') from None
     except urllib.error.URLError as e:

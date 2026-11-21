@@ -42,6 +42,18 @@ class FetchTests(unittest.TestCase):
                     m.request_json('https://example.com')
                 self.assertIn(expected, str(error.exception))
                 self.assertNotIn('secret', str(error.exception))
+    def test_meta_error_codes_without_secret_messages(self):
+        import io
+        body = b'{"error":{"code":190,"error_subcode":463,"message":"Token expired: secret"}}'
+        failure = urllib.error.HTTPError('https://example.com?secret', 400, 'secret', {}, io.BytesIO(body))
+        with patch('urllib.request.urlopen', side_effect=failure):
+            with self.assertRaises(m.MonitorError) as error:
+                m.request_json('https://example.com')
+        text = str(error.exception)
+        self.assertIn('code=190', text)
+        self.assertIn('error_subcode=463', text)
+        self.assertIn('token_expired', text)
+        self.assertNotIn('secret', text)
     def test_bad_json(self):
         with patch('urllib.request.urlopen') as p:
             p.return_value.__enter__.return_value.read.return_value = b'<html>login</html>'
