@@ -375,9 +375,9 @@
     "18176136526415075"
   ],
   "pending": null,
-  "failures": 2,
-  "alerted": false,
+  "failures": 3,
+  "alerted": true,
   "last_success": "2026-11-20T14:10:09.838299+00:00",
-  "last_run": "2026-11-21T03:12:33.193818+00:00",
+  "last_run": "2026-11-21T10:59:01.518814+00:00",
   "last_error": "HTTP 401; no automatic retry"
 }
