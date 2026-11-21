@@ -85,6 +85,8 @@ def timestamp(value):
 
 
 def fetch_posts(env, request=request_json, *, target=TARGET, known_ids=None, recent_baseline=False):
+    if Path('state/meta-api-paused.json').exists() and env.get('ALLOW_META_PROBE') != 'true':
+        raise MonitorError('Meta API access is paused after API access blocked (200/5258005); resolve the restriction in Meta before resuming')
     token = env.get('META_ACCESS_TOKEN', '').strip()
     user = env.get('META_IG_USER_ID', '').strip()
     version = env.get('META_API_VERSION', '').strip()

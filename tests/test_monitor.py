@@ -65,6 +65,14 @@ class FetchTests(unittest.TestCase):
         self.assertIn('Too many calls',str(error.exception))
         self.assertNotIn(secret,str(error.exception))
         self.assertNotIn('example.com',str(error.exception))
+    def test_explicit_meta_block_prevents_automatic_requests(self):
+        calls=[]
+        with patch('monitor.Path.exists',return_value=True):
+            with self.assertRaises(m.MonitorError):
+                m.fetch_posts(ENV,lambda *a,**k: calls.append(a))
+            self.assertEqual(calls,[])
+            env=dict(ENV,ALLOW_META_PROBE='true')
+            self.assertEqual(m.fetch_posts(env,lambda *a,**k: response([])),[])
     def test_bad_json(self):
         with patch('urllib.request.urlopen') as p:
             p.return_value.__enter__.return_value.read.return_value = b'<html>login</html>'

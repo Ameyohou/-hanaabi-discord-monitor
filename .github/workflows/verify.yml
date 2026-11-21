@@ -21,6 +21,7 @@ jobs:
       - name: Verify selected connection
         env:
           MODE: ${{ inputs.mode }}
+          ALLOW_META_PROBE: 'true'
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           META_IG_USER_ID: ${{ secrets.META_IG_USER_ID }}
