@@ -23,9 +23,9 @@
     "18198104362402692"
   ],
   "pending": null,
-  "failures": 3,
+  "failures": 4,
   "alerted": true,
   "last_success": "2026-11-20T14:29:52.504355+00:00",
-  "last_run": "2026-11-21T11:26:17.238987+00:00",
-  "last_error": "HTTP 401; no automatic retry"
+  "last_run": "2026-11-21T12:12:02.518738+00:00",
+  "last_error": "pagination limit exceeded; refusing partial results"
 }
