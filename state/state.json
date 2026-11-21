@@ -375,9 +375,9 @@
     "18176136526415075"
   ],
   "pending": null,
-  "failures": 6,
+  "failures": 7,
   "alerted": true,
   "last_success": "2026-11-20T14:10:09.838299+00:00",
-  "last_run": "2026-11-21T18:04:54.350469+00:00",
-  "last_error": "HTTP 400 (Meta code=200, error_subcode=5258005): API access blocked.; no automatic retry"
+  "last_run": "2026-11-21T23:13:10.338102+00:00",
+  "last_error": "Meta API access is paused after API access blocked (200/5258005); resolve the restriction in Meta before resuming"
 }
