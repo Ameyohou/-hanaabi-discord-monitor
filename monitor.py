@@ -51,6 +51,16 @@ def request_json(url, *, token=None, payload=None):
                     break
             if fields:
                 detail = ' (Meta ' + ', '.join(fields) + ')'
+            # Redact credential-like strings and URLs before exposing Meta's explanation.
+            explanation = str(err.get('message', ''))
+            for secret in (token, os.environ.get('META_ACCESS_TOKEN'), os.environ.get('DISCORD_WEBHOOK_URL')):
+                if secret:
+                    explanation = explanation.replace(secret, '[REDACTED]')
+            explanation = re.sub(r'https?://\S+', '[URL]', explanation)
+            explanation = re.sub(r'[A-Za-z0-9_./+=-]{32,}', '[REDACTED]', explanation)
+            explanation = re.sub(r'[\r\n\x00-\x1f]', ' ', explanation)
+            if explanation:
+                detail += ': ' + explanation[:400]
         except (ValueError, TypeError, AttributeError, OSError):
             pass
         raise MonitorError(f'HTTP {e.code}{detail}; no automatic retry') from None

@@ -48,12 +48,23 @@ class FetchTests(unittest.TestCase):
         failure = urllib.error.HTTPError('https://example.com?secret', 400, 'secret', {}, io.BytesIO(body))
         with patch('urllib.request.urlopen', side_effect=failure):
             with self.assertRaises(m.MonitorError) as error:
-                m.request_json('https://example.com')
+                m.request_json('https://example.com', token='secret')
         text = str(error.exception)
         self.assertIn('code=190', text)
         self.assertIn('error_subcode=463', text)
         self.assertIn('token_expired', text)
         self.assertNotIn('secret', text)
+    def test_error_explanation_redacts_actual_credentials(self):
+        import io, json
+        secret = 'EAA' + 'x' * 80
+        body = json.dumps({'error': {'code':200, 'message':'Too many calls: ' + secret + ' https://example.com/private'}}).encode()
+        failure = urllib.error.HTTPError('https://example.com',400,'error',{},io.BytesIO(body))
+        with patch('urllib.request.urlopen',side_effect=failure):
+            with self.assertRaises(m.MonitorError) as error:
+                m.request_json('https://example.com',token=secret)
+        self.assertIn('Too many calls',str(error.exception))
+        self.assertNotIn(secret,str(error.exception))
+        self.assertNotIn('example.com',str(error.exception))
     def test_bad_json(self):
         with patch('urllib.request.urlopen') as p:
             p.return_value.__enter__.return_value.read.return_value = b'<html>login</html>'
