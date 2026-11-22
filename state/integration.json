@@ -1,0 +1,18 @@
+{
+  "alerted": false,
+  "failures": 0,
+  "initialized": true,
+  "last_result": {
+    "already_seen": 0,
+    "fetched": 0,
+    "sent": 0,
+    "status": "fetching",
+    "target": "【動作確認・既存投稿を使用】BBC News"
+  },
+  "last_run": "2026-11-22T22:20:57.315342+00:00",
+  "last_success": null,
+  "pending": null,
+  "seen": [],
+  "test_run_id": "45077198860",
+  "version": 1
+}
