@@ -375,9 +375,9 @@
     "18176136526415075"
   ],
   "pending": null,
-  "failures": 9,
-  "alerted": true,
-  "last_success": "2026-11-20T14:10:09.838299+00:00",
-  "last_run": "2026-11-22T11:20:05.221759+00:00",
+  "failures": 0,
+  "alerted": false,
+  "last_success": "2026-11-22T16:40:42.415170+00:00",
+  "last_run": "2026-11-22T16:40:42.415170+00:00",
   "last_error": "Meta API access is paused after API access blocked (200/5258005); resolve the restriction in Meta before resuming"
 }
