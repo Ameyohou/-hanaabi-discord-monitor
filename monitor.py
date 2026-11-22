@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -210,6 +211,19 @@ def run(state, fetch, send, save, now, label="南陽醸造"):
         return 1
 
 
+def push_state(run_command=subprocess.run, sleep=time.sleep):
+    # Retry only persistence of the SAME commit. Never replay the webhook,
+    # rebase, or force-push after a delivery.
+    for attempt in range(3):
+        result = run_command(['git', 'push', 'origin', 'HEAD'], stdout=subprocess.DEVNULL)
+        if result.returncode == 0:
+            return
+        if attempt < 2:
+            print(f'WARNING: state push failed; retry {attempt + 1}/2', file=sys.stderr)
+            sleep((2, 5)[attempt])
+    raise subprocess.CalledProcessError(result.returncode, ['git', 'push', 'origin', 'HEAD'])
+
+
 def main(target=TARGET):
     if target not in (TARGET, 'bbcnews'):
         raise MonitorError('unsupported target')
@@ -248,7 +262,7 @@ def main(target=TARGET):
             changed = subprocess.run(['git', 'diff', '--cached', '--quiet']).returncode
             if changed:
                 subprocess.run(['git', 'commit', '-m', 'Update monitor state [skip ci]'], check=True, stdout=subprocess.DEVNULL)
-                subprocess.run(['git', 'push', 'origin', 'HEAD'], check=True, stdout=subprocess.DEVNULL)
+                push_state()
     def fetch():
         migrating = is_bbc and not state.get('reels_enabled', False)
         posts = fetch_posts(os.environ, target=target,

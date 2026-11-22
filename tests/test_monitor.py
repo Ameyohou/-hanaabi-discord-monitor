@@ -183,6 +183,22 @@ class ReelsTests(unittest.TestCase):
                 self.assertEqual(len(messages),1);self.assertIn('リール',messages[0])
             finally: os.chdir(cwd)
 
+class PersistenceRetryTests(unittest.TestCase):
+    def test_transient_push_failure_retries_same_commit(self):
+        import subprocess
+        push=__import__('unittest.mock',fromlist=['Mock']).Mock(side_effect=[subprocess.CompletedProcess([],1),subprocess.CompletedProcess([],0)])
+        waits=[]
+        m.push_state(push, waits.append)
+        self.assertEqual(push.call_count,2)
+        self.assertEqual(waits,[2])
+        self.assertEqual(push.call_args_list[0],push.call_args_list[1])
+    def test_permanent_failure_stops_after_three_attempts(self):
+        import subprocess
+        push=__import__('unittest.mock',fromlist=['Mock']).Mock(return_value=subprocess.CompletedProcess([],1))
+        waits=[]
+        with self.assertRaises(subprocess.CalledProcessError):m.push_state(push,waits.append)
+        self.assertEqual(push.call_count,3);self.assertEqual(waits,[2,5])
+
 class StateTests(unittest.TestCase):
     def setUp(self):
         self.state = m.initial_state()
