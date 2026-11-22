@@ -377,7 +377,7 @@
   "pending": null,
   "failures": 0,
   "alerted": false,
-  "last_success": "2026-11-22T16:40:42.415170+00:00",
-  "last_run": "2026-11-22T16:40:42.415170+00:00",
+  "last_success": "2026-11-22T18:39:04.729434+00:00",
+  "last_run": "2026-11-22T18:39:04.729434+00:00",
   "last_error": "Meta API access is paused after API access blocked (200/5258005); resolve the restriction in Meta before resuming"
 }
