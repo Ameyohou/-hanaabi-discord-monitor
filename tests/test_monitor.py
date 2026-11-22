@@ -157,6 +157,32 @@ class BBCTests(unittest.TestCase):
             finally:
                 os.chdir(original)
 
+class ReelsTests(unittest.TestCase):
+    def test_reels_only_when_explicitly_enabled(self):
+        reel=dict(post('8','REELS'),permalink='https://www.instagram.com/reel/ABC8/')
+        request=lambda *a,**kw: response([post('1'),reel,post('9','STORY')])
+        self.assertEqual([p['id'] for p in m.fetch_posts(ENV,request)],['1'])
+        self.assertEqual([p['id'] for p in m.fetch_posts(ENV,request,include_reels=True)],['1','8'])
+    def test_migration_suppresses_existing_reels_then_notifies_once(self):
+        import tempfile,os,json
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd=os.getcwd()
+            try:
+                os.chdir(tmp);Path('state').mkdir()
+                st=m.initial_state();st.update(initialized=True,seen=['1'])
+                Path('state/bbcnews.json').write_text(json.dumps(st))
+                old=post('8','REELS'); new=dict(post('9','REELS'),timestamp='2099-01-01T00:00:00+00:00')
+                messages=[]
+                with patch.dict(os.environ,{'PERSIST_GIT':'false'}), patch('monitor.fetch_posts',return_value=[post('1'),old]) as fetch, patch('monitor.discord',side_effect=lambda text,env:messages.append(text)):
+                    self.assertEqual(m.main('bbcnews'),0)
+                    self.assertTrue(fetch.call_args.kwargs['include_reels'])
+                    self.assertEqual(messages,[])
+                with patch.dict(os.environ,{'PERSIST_GIT':'false'}),patch('monitor.fetch_posts',return_value=[post('1'),old,new]),patch('monitor.discord',side_effect=lambda text,env:messages.append(text)):
+                    self.assertEqual(m.main('bbcnews'),0);self.assertEqual(m.main('bbcnews'),0)
+                self.assertEqual(len(messages),1);self.assertIn('リール',messages[0])
+            finally: os.chdir(cwd)
+
 class StateTests(unittest.TestCase):
     def setUp(self):
         self.state = m.initial_state()

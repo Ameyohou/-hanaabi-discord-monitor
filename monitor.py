@@ -84,7 +84,7 @@ def timestamp(value):
         raise MonitorError('invalid post timestamp') from None
 
 
-def fetch_posts(env, request=request_json, *, target=TARGET, known_ids=None, recent_baseline=False):
+def fetch_posts(env, request=request_json, *, target=TARGET, known_ids=None, recent_baseline=False, include_reels=False):
     if Path('state/meta-api-paused.json').exists() and env.get('ALLOW_META_PROBE') != 'true':
         raise MonitorError('Meta API access is paused after API access blocked (200/5258005); resolve the restriction in Meta before resuming')
     token = env.get('META_ACCESS_TOKEN', '').strip()
@@ -94,6 +94,7 @@ def fetch_posts(env, request=request_json, *, target=TARGET, known_ids=None, rec
         raise MonitorError('configure META_ACCESS_TOKEN, META_IG_USER_ID and META_API_VERSION')
     if any(ord(c) < 33 or ord(c) > 126 for c in token):
         raise MonitorError('META_ACCESS_TOKEN contains whitespace or non-ASCII characters; paste the token as one line')
+    products = {'FEED', 'REELS'} if include_reels else {'FEED'}
     posts, cursors, after = {}, set(), None
     for _ in range(20):
         suffix = '.after(' + after + ')' if after else ''
@@ -111,11 +112,11 @@ def fetch_posts(env, request=request_json, *, target=TARGET, known_ids=None, rec
                 # Explicit product type prevents Reels/Stories from being mistaken for feed posts.
                 if p['media_product_type'] not in ('FEED', 'REELS', 'STORY', 'AD'):
                     raise ValueError()
-                if p['media_product_type'] != 'FEED':
+                if p['media_product_type'] not in products:
                     continue
                 if not isinstance(p['id'], str) or not p['id'].isdigit():
                     raise ValueError()
-                if not re.fullmatch(r'https://www\.instagram\.com/p/[A-Za-z0-9_-]+/?', p['permalink']):
+                if not re.fullmatch(r'https://www\.instagram\.com/' + ('(?:p|reel)' if include_reels else 'p') + r'/[A-Za-z0-9_-]+/?', p['permalink']):
                     raise ValueError()
                 timestamp(p['timestamp'])
                 if 'caption' in p and not isinstance(p['caption'], str):
@@ -123,7 +124,7 @@ def fetch_posts(env, request=request_json, *, target=TARGET, known_ids=None, rec
                 posts[p['id']] = p
             # Test account: baseline only the recent page, then page back to an
             # page overlapping the previous FEED baseline. Do not scan a large news archive each run.
-            page_feed = [p for p in rows if p['media_product_type'] == 'FEED']
+            page_feed = [p for p in rows if p['media_product_type'] in products]
             if recent_baseline or (known_ids and page_feed and any(p['id'] in known_ids for p in page_feed)):
                 return sorted(posts.values(), key=lambda p: (timestamp(p['timestamp']), p['id']))
             paging = media.get('paging', {})
@@ -184,7 +185,7 @@ def run(state, fetch, send, save, now, label="南陽醸造"):
                 state['pending'] = p['id']
                 save(state)  # Durable BEFORE sending: no blind retry after a crash.
                 local = timestamp(p['timestamp']).astimezone(dt.timezone(dt.timedelta(hours=9)))
-                send(f'{label} 新規投稿\n投稿日時: {local:%Y-%m-%d %H:%M:%S} JST\n{p["permalink"]}\n{p.get("caption", "（本文なし／取得不可）")[:1500]}')
+                send(f'{label} 新規投稿（{"リール" if p.get("media_product_type") == "REELS" else "通常投稿"}）\n投稿日時: {local:%Y-%m-%d %H:%M:%S} JST\n{p["permalink"]}\n{p.get("caption", "（本文なし／取得不可）")[:1500]}')
                 state['seen'].append(p['id'])
                 state['pending'] = None
                 save(state)
@@ -248,10 +249,28 @@ def main(target=TARGET):
             if changed:
                 subprocess.run(['git', 'commit', '-m', 'Update monitor state [skip ci]'], check=True, stdout=subprocess.DEVNULL)
                 subprocess.run(['git', 'push', 'origin', 'HEAD'], check=True, stdout=subprocess.DEVNULL)
-    result = run(state, lambda: fetch_posts(os.environ, target=target,
-                   known_ids=set(state['seen']) if is_bbc and state['initialized'] else None,
-                   recent_baseline=is_bbc and not state['initialized']),
-                 lambda s: discord(s, os.environ), save,
+    def fetch():
+        migrating = is_bbc and not state.get('reels_enabled', False)
+        posts = fetch_posts(os.environ, target=target,
+            known_ids=set(state['seen']) if is_bbc and state['initialized'] else None,
+            recent_baseline=is_bbc and (not state['initialized'] or migrating),
+            include_reels=is_bbc)
+        if migrating:
+            # Only mark existing Reels as seen; never reset existing FEED history.
+            for p in posts:
+                if p['media_product_type'] == 'REELS' and p['id'] not in state['seen']:
+                    state['seen'].append(p['id'])
+            state['reels_since'] = dt.datetime.now(dt.timezone.utc).isoformat()
+            state['reels_enabled'] = True
+            save(state)
+            print('BBC Reels baseline recorded; existing Reels will not be sent')
+        if is_bbc:
+            posts = [p for p in posts if p['media_product_type'] != 'REELS'
+                     or p['id'] in state['seen']
+                     or timestamp(p['timestamp']) >= timestamp(state['reels_since'])]
+        return posts
+
+    result = run(state, fetch, lambda s: discord(s, os.environ), save,
                  dt.datetime.now(dt.timezone.utc), label='【テスト】BBC News' if is_bbc else '南陽醸造')
     print(f'{target}: initialized={state["initialized"]}, seen={len(state["seen"])}, failures={state["failures"]}')
     return result
