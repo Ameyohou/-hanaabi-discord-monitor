@@ -144,12 +144,12 @@ class BBCTests(unittest.TestCase):
                 os.chdir(tmp)
                 Path('state').mkdir()
                 Path('state/state.json').write_text('production sentinel')
-                with patch.dict(os.environ, {'PERSIST_GIT':'false'}), patch('monitor.fetch_posts', return_value=[post('1')]):
+                with patch.dict(os.environ, {'STATE_BACKEND':'local'}), patch('monitor.fetch_posts', return_value=[post('1')]):
                     self.assertEqual(m.main('bbcnews'), 0)
                 self.assertEqual(Path('state/state.json').read_text(), 'production sentinel')
                 self.assertTrue(__import__('json').loads(Path('state/bbcnews.json').read_text())['initialized'])
                 messages=[]
-                with patch.dict(os.environ, {'PERSIST_GIT':'false'}), patch('monitor.fetch_posts', return_value=[post('1'),dict(post('2'),timestamp='2099-01-01T00:00:00+00:00')]), patch('monitor.discord', side_effect=lambda text, env: messages.append(text)):
+                with patch.dict(os.environ, {'STATE_BACKEND':'local'}), patch('monitor.fetch_posts', return_value=[post('1'),dict(post('2'),timestamp='2099-01-01T00:00:00+00:00')]), patch('monitor.discord', side_effect=lambda text, env: messages.append(text)):
                     self.assertEqual(m.main('bbcnews'), 0)
                     self.assertEqual(m.main('bbcnews'), 0)
                 self.assertEqual(len(messages),1)
@@ -174,11 +174,11 @@ class ReelsTests(unittest.TestCase):
                 Path('state/bbcnews.json').write_text(json.dumps(st))
                 old=post('8','REELS'); new=dict(post('9','REELS'),timestamp='2099-01-01T00:00:00+00:00')
                 messages=[]
-                with patch.dict(os.environ,{'PERSIST_GIT':'false'}), patch('monitor.fetch_posts',return_value=[post('1'),old]) as fetch, patch('monitor.discord',side_effect=lambda text,env:messages.append(text)):
+                with patch.dict(os.environ,{'STATE_BACKEND':'local'}), patch('monitor.fetch_posts',return_value=[post('1'),old]) as fetch, patch('monitor.discord',side_effect=lambda text,env:messages.append(text)):
                     self.assertEqual(m.main('bbcnews'),0)
                     self.assertTrue(fetch.call_args.kwargs['include_reels'])
                     self.assertEqual(messages,[])
-                with patch.dict(os.environ,{'PERSIST_GIT':'false'}),patch('monitor.fetch_posts',return_value=[post('1'),old,new]),patch('monitor.discord',side_effect=lambda text,env:messages.append(text)):
+                with patch.dict(os.environ,{'STATE_BACKEND':'local'}),patch('monitor.fetch_posts',return_value=[post('1'),old,new]),patch('monitor.discord',side_effect=lambda text,env:messages.append(text)):
                     self.assertEqual(m.main('bbcnews'),0);self.assertEqual(m.main('bbcnews'),0)
                 self.assertEqual(len(messages),1);self.assertIn('リール',messages[0])
             finally: os.chdir(cwd)

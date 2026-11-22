@@ -115,7 +115,10 @@ class GitHubStore:
         for attempt in range(3):
             try:
                 result = self.request('PUT', self.url, self.token, body)
-                self.sha = result['content']['sha']
+                new_sha = result['content']['sha']
+                if not isinstance(new_sha, str) or not new_sha:
+                    raise KeyError('missing SHA')
+                self.sha = new_sha
                 return
             except (HTTPFailure, KeyError, TypeError):
                 # A PUT can succeed even if its response is lost. Reconcile first.

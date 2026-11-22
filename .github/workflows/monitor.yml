@@ -1,7 +1,7 @@
 name: Instagram monitor
 on:
   schedule:
-    # More wake opportunities; persistent due gate allows API checks at most every 30 minutes.
+    # More wake opportunities; persistent due gate allows one API check per UTC half-hour slot.
     - cron: '7,17,27,37,47,57 * * * *'
   push:
     paths:
@@ -13,7 +13,7 @@ on:
         type: boolean
         default: false
       respect_interval:
-        description: '外部スケジューラ用。30分未満の確認をスキップ'
+        description: '外部スケジューラ用。同じ30分枠の確認をスキップ'
         type: boolean
         default: false
       resume_meta:

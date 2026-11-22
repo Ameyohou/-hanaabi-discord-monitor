@@ -13,7 +13,7 @@ GitHubとCloudflareの両方が停止すれば起動できず、厳密な時刻�
 3. Cloudflare Workerに、PATを **Secret** 名 `GH_ACTIONS_TOKEN` で登録する。コード・チャットには貼らない。
 4. `dispatch-worker.js` と `wrangler.toml` でデプロイする。公開HTTP入口は使わず、Cronだけで起動する。
 5. Cronの実行ログとGitHub側 `workflow_dispatch` を確認する。
-6. GitHubの永続状態で30分未満の重複起動はAPIアクセスをスキップする。PCの常時起動は不要。
+6. GitHubの永続状態で同じ30分枠での重複起動はAPIアクセスをスキップする。PCの常時起動は不要。
 
 このPATはCloudflareに「このリポジトリのActionsを起動・管理できる権限」を与えます。導入は所有者の許可を得てから行います。終了時はWorkerのCronを停止しPATを失効させます。
 

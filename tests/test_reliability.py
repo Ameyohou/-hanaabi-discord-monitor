@@ -39,6 +39,23 @@ class ReliabilityTests(unittest.TestCase):
         calls=[]
         m.discord('😀'*2000,{'DISCORD_WEBHOOK_URL':'https://discord.com/api/webhooks/123/abc'},lambda *a,**kw:calls.append(kw))
         self.assertLessEqual(len(calls[0]['payload']['content'].encode('utf-16-le')),3800)
+    def test_slot_gate_avoids_30_minute_jitter_drift(self):
+        now=dt.datetime(2026,11,23,1,30,1,tzinfo=dt.timezone.utc)
+        self.assertTrue(m.due_in_slot({'last_run':'2026-11-23T01:00:05+00:00'},now))
+        self.assertFalse(m.due_in_slot({'last_run':'2026-11-23T01:30:00+00:00'},now))
+    def test_corrupt_or_wrong_account_state_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old=os.getcwd()
+            try:
+                os.chdir(tmp);Path('state').mkdir()
+                for update in [{'account':'bbcnews'},{'last_run':'broken'},{'version':True}]:
+                    state=m.initial_state();state.update(update)
+                    Path('state/state.json').write_text(json.dumps(state))
+                    with patch('monitor.fetch_posts') as fetch:
+                        with self.assertRaises((m.StateError,m.MonitorError)):
+                            m.main()
+                        fetch.assert_not_called()
+            finally:os.chdir(old)
     def test_interval_gate_never_calls_api(self):
         with tempfile.TemporaryDirectory() as tmp:
             old=os.getcwd()

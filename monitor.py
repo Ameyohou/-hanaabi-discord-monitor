@@ -249,6 +249,13 @@ def run(state, fetch, send, save, now, label="南陽醸造", clock=None):
         return 1
 
 
+def due_in_slot(state, now):
+    # Each UTC half-hour has one check. Avoid cumulative drift from a few
+    # seconds of runner/HTTP jitter on a strict elapsed-time threshold.
+    previous = state.get('last_run')
+    return previous is None or int(timestamp(previous).timestamp() // 1800) < int(now.timestamp() // 1800)
+
+
 def main(target=TARGET):
     if target not in (TARGET, 'bbcnews'):
         raise MonitorError('unsupported target')
@@ -259,7 +266,7 @@ def main(target=TARGET):
     if state is not None:
         try:
             expected = initial_state()
-            if state.get('version') != 1 or any(k not in state for k in expected):
+            if type(state.get('version')) is not int or state['version'] != 1 or any(k not in state for k in expected):
                 raise ValueError()
             if (not isinstance(state['seen'], list)
                     or any(not isinstance(i, str) or not i.isdigit() for i in state['seen'])
@@ -268,8 +275,11 @@ def main(target=TARGET):
                     or (state['pending'] is not None and
                         (not isinstance(state['pending'], str) or not state['pending'].isdigit()))):
                 raise ValueError()
-            if state['last_success'] is not None:
-                timestamp(state['last_success'])
+            for field in ('last_success', 'last_run', 'last_fetch_success', 'reels_since'):
+                if state.get(field) is not None:
+                    timestamp(state[field])
+            if 'reels_enabled' in state and type(state['reels_enabled']) is not bool:
+                raise ValueError()
         except (ValueError, TypeError, AttributeError):
             raise MonitorError('state corrupted; restore from Git history') from None
     elif is_bbc or os.environ.get('INITIALIZE') == 'true':
@@ -277,12 +287,16 @@ def main(target=TARGET):
     else:
         raise MonitorError('state missing; use manual initialize=true only for first setup')
 
+    if state.get('account', target) != target:
+        raise StateError('state account does not match target; refusing to use another account history')
+    state['account'] = target
+
     def save(value):
         store.save(value)
 
     now = dt.datetime.now(dt.timezone.utc)
     if (os.environ.get('RESPECT_INTERVAL') == 'true' and os.environ.get('FORCE_CHECK') != 'true'
-            and state.get('last_run') and now - timestamp(state['last_run']) < dt.timedelta(minutes=30)):
+            and not due_in_slot(state, now)):
         record_summary(target, {'status': 'not_due', 'last_fetch_success': state.get('last_fetch_success')})
         print(f'{target}: not due; API was not called')
         return 0

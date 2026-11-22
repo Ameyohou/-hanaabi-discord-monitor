@@ -10,7 +10,7 @@
 
 |観測・問題|根拠|今回の変更|
 |---|---|---|
-|定期起動に数時間の空白|直近のschedule履歴。南陽醸造8回、BBC8回の起動時刻を照合|一本化した起動＋永続30分ゲート。10分おきの起動機会は欠落への余裕で、保証ではない|
+|定期起動に数時間の空白|直近のschedule履歴。南陽醸造8回、BBC8回の起動時刻を照合|一本化した起動＋永続30分枠ゲート。10分おきの起動機会は欠落への余裕で、保証ではない|
 |GitHubへpushできず通知途中で終了|`45063156064` のremote rejected。過去にもpackファイルrename失敗|Git pushを廃止。専用ブランチへSHA照合付きContents APIで保存|
 |保存成功後の応答喪失が不明|外部API間の非トランザクション性|再読込で保存内容を照合。同一なら成功扱い。競合なら上書きせず停止|
 |BBCが古い全アーカイブへ遡る|`44902695048` で20ページ上限|時間窓で境界を確認。既知IDだけでは打ち切らない|
@@ -62,3 +62,7 @@
 - https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule
 - https://docs.github.com/en/rest/repos/contents
 - https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/business_discovery/
+
+## 実施結果
+
+ローカル自動テスト51件成功。本番の新しい保存方式で2アカウントの取得・保存が成功し、別runnerからの再実行でも両対象sent=0を確認しました。さらに独立した実配送テストでDiscord受理・遠隔状態再読込・2回目sent=0を確認しました。証跡はVERIFICATION.mdに記載しています。定期起動の長期保証と独立外部Cronの導入は完了扱いにしていません。
