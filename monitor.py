@@ -178,7 +178,8 @@ def initial_state():
             'failures': 0, 'alerted': False, 'last_success': None, 'last_run': None}
 
 
-def run(state, fetch, send, save, now, label="南陽醸造"):
+def run(state, fetch, send, save, now, label="南陽醸造", clock=None):
+    stamp = clock or (lambda: now)
     state['last_run'] = now.isoformat()
     stats = {'target': label, 'fetched': 0, 'sent': 0, 'already_seen': 0}
     state['last_result'] = stats
@@ -193,8 +194,9 @@ def run(state, fetch, send, save, now, label="南陽醸造"):
         stats['status'] = 'fetching'
         save(state)  # Persist the attempt before using either external API.
         posts = fetch()  # Finish every required page before baseline or delivery.
-        state['last_fetch_success'] = now.isoformat()
+        state['last_fetch_success'] = stamp().isoformat()
         stats['fetched'] = len(posts)
+        stats['by_type'] = {kind: sum(p.get('media_product_type') == kind for p in posts) for kind in ('FEED', 'REELS')}
         stats['status'] = 'fetched'
         if not state['initialized']:
             state['seen'] = [p['id'] for p in posts]
@@ -221,7 +223,7 @@ def run(state, fetch, send, save, now, label="南陽醸造"):
             send(f'{label}: 監視の空白を検出しました（前回成功から90分超）。取得可能な投稿を再確認しました。')
         if state['alerted']:
             send(f'{label}: Instagram投稿取得が復旧しました。')
-        state.update(failures=0, alerted=False, last_success=now.isoformat(), last_error=None)
+        state.update(failures=0, alerted=False, last_success=stamp().isoformat(), last_error=None)
         state.pop('pending_url', None)
         state.pop('pending_since', None)
         stats['status'] = 'success'
@@ -311,7 +313,8 @@ def main(target=TARGET):
 
     try:
         result = run(state, fetch, lambda text: discord(text, os.environ), save,
-                     now, label='【テスト】BBC News' if is_bbc else '南陽醸造')
+                     now, label='【テスト】BBC News' if is_bbc else '南陽醸造',
+                     clock=lambda: dt.datetime.now(dt.timezone.utc))
     except StateError:
         record_summary(target, {'status': 'state_save_failed', 'pending': state.get('pending'),
                                 'last_fetch_success': state.get('last_fetch_success')})

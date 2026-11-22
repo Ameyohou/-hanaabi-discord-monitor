@@ -135,3 +135,6 @@ Metaが利用できない場合はInstagramアプリの投稿通知を使うか�
 - [GitHub schedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
 - [GitHub Contents API](https://docs.github.com/en/rest/repos/contents)
 - [GitHub Actions料金](https://docs.github.com/en/billing/concepts/product-billing/github-actions)
+
+## 実環境の経路テスト
+Actions → Live delivery checkを手動実行すると、BBCの既存投稿を1件使って `【動作確認・既存投稿を使用】` と付けたテスト通知を送ります。専用 `state/integration.json` だけを使い、南陽醸造・BBCの本番通知記録は変更しません。同じ状態を遠隔から読み直して2回目の送信が0件であることまで確認します。実行ごとにテスト通知が1件届きます。過去のテストがpendingで止まっている場合は確認なしにリセットしません。
