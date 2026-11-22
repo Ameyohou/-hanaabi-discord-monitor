@@ -149,7 +149,7 @@ class BBCTests(unittest.TestCase):
                 self.assertEqual(Path('state/state.json').read_text(), 'production sentinel')
                 self.assertTrue(__import__('json').loads(Path('state/bbcnews.json').read_text())['initialized'])
                 messages=[]
-                with patch.dict(os.environ, {'PERSIST_GIT':'false'}), patch('monitor.fetch_posts', return_value=[post('1'),post('2')]), patch('monitor.discord', side_effect=lambda text, env: messages.append(text)):
+                with patch.dict(os.environ, {'PERSIST_GIT':'false'}), patch('monitor.fetch_posts', return_value=[post('1'),dict(post('2'),timestamp='2099-01-01T00:00:00+00:00')]), patch('monitor.discord', side_effect=lambda text, env: messages.append(text)):
                     self.assertEqual(m.main('bbcnews'), 0)
                     self.assertEqual(m.main('bbcnews'), 0)
                 self.assertEqual(len(messages),1)
@@ -182,22 +182,6 @@ class ReelsTests(unittest.TestCase):
                     self.assertEqual(m.main('bbcnews'),0);self.assertEqual(m.main('bbcnews'),0)
                 self.assertEqual(len(messages),1);self.assertIn('リール',messages[0])
             finally: os.chdir(cwd)
-
-class PersistenceRetryTests(unittest.TestCase):
-    def test_transient_push_failure_retries_same_commit(self):
-        import subprocess
-        push=__import__('unittest.mock',fromlist=['Mock']).Mock(side_effect=[subprocess.CompletedProcess([],1),subprocess.CompletedProcess([],0)])
-        waits=[]
-        m.push_state(push, waits.append)
-        self.assertEqual(push.call_count,2)
-        self.assertEqual(waits,[2])
-        self.assertEqual(push.call_args_list[0],push.call_args_list[1])
-    def test_permanent_failure_stops_after_three_attempts(self):
-        import subprocess
-        push=__import__('unittest.mock',fromlist=['Mock']).Mock(return_value=subprocess.CompletedProcess([],1))
-        waits=[]
-        with self.assertRaises(subprocess.CalledProcessError):m.push_state(push,waits.append)
-        self.assertEqual(push.call_count,3);self.assertEqual(waits,[2,5])
 
 class StateTests(unittest.TestCase):
     def setUp(self):

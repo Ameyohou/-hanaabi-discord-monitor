@@ -1,0 +1,6 @@
+name = "hanaabi-schedule"
+main = "dispatch-worker.js"
+compatibility_date = "2026-11-01"
+workers_dev = false
+[triggers]
+crons = ["17,47 * * * *"]

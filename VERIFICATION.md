@@ -1,24 +1,23 @@
-# 検証結果（2026-11-18 JST）
+# 検証記録
 
-- Instagramプロフィールへの通常GET：HTTP 200、プロフィールタイトル取得。取得HTMLには `/p/`、`/reel/`、`taken_at`、`edge_owner_to_timeline_media`、`media_count`、`xdt_api` なし。実投稿の日時・URL・本文の組を抽出できず。
-- Web取得サービス経由：HTTP 429。応答元がInstagramか中継かは断定不可。制限回避や再試行の連打は行わず。
-- Meta公式ドキュメントは検索結果でBusiness Discoveryの存在・対象種別を確認。直接取得は429。最新の必要権限・審査要件は導入時に公式画面で再確認が必要。
-- Meta公式API実通信：2026-11-20に利用者がGraph API Explorer v27.0で実行し、共有された応答で hanaabi_official の通常投稿3件（FEED）の本文・URL・日時を確認。こちらからの認証付き実通信、全ページ取得、GitHubランナー経由は未検証。
-- Discord実配送：Webhook未提供のため未実施。
-- ローカル自動テスト：18件成功。HTTP障害などはモックによる検証で、Instagramの実取得成功を意味しない。
-- GitHub Actions：3つのYAMLをパース確認。GitHubのリポジトリ未指定・Secrets未登録のため、GitHub上での実行、状態コミットとpush、定期起動は未検証。
-- 動作に必要な外部Pythonパッケージなし。
+## 2026-11-23 JST 再設計
 
-## 残作業
+- ローカル自動テスト：49件成功（GitHub Actionsと同じGITHUB_ACTIONS=true / STATE_BACKEND=local条件でも確認）。
+- 4つのワークフローYAMLをパース確認。
+- GitHub公式actions/checkout、setup-python v6のタグが指すSHAを公式リポジトリで確認して固定。Node.js 20警告の対象部品を更新。
+- 通知済み状態の移行元を確認：南陽醸造371 ID、BBC108 ID。両方ともinitialized=true、pending=null。実行中・queuedのワークフローなし。
+- 移行元mainのSHA：2dae311cc3dadb621d9d14f1bf438a0cf5b2685c。
+- monitor-stateブランチを上記SHAから作成し、状態をそのまま保持。
+- 新しいContents APIによる本番保存・再実行の結果は、この変更のデプロイ後に確認する。
+- 任意のCloudflare dispatcher：通信を模擬したテストのみ成功。外部サービスには未導入、認証情報未登録。
 
-1. 公式API認証の前提を満たすか確認。満たせない場合はREADMEの代替案を選ぶ。
-2. 公開GitHubリポジトリ作成とファイルの配置。
-3. Secrets 3件とAPIバージョン変数1件を登録。
-4. TestsとVerify connectionのfetch/discordを実行。Instagramの実投稿と日時を照合。
-5. 初回のみinitialize=trueで実行し、状態が保存されることを確認。
-6. initialize=falseで再実行し、既存投稿の重複通知がないことを確認。
-7. 次の新規投稿で実通知を確認。Actions履歴とトークン期限を継続確認。
+## 既存の実確認
 
-## 納品保存先について
+- 南陽醸造：公式APIで通常投稿371件を取得。
+- BBC：通常投稿とリールを取得し、新規投稿をDiscordに配送。利用者から実メッセージ受信を確認済み。
+- Metaアカウントの明示的ブロックは所有者の本人確認後に解消し、手動取得成功を確認済み。将来の失効・ブロックを保証するものではない。
+- 旧状態保存のGit push失敗と定期起動の数時間の空白を実ログで確認。従来の構成を安定運用済みとは扱わない。
 
-指定された `/codex/browser/projectless/0001-github-instagram-hanaabi-official-discord-github/output` は、この実行環境ではルートファイルシステムが読み取り専用で作成できません。書込権限の付与後も同じでした。代わりに `/workspace/output` にZIPとREADMEを保存しました。コードの作成・ローカルテストには影響しません。
+## 最終判定の制約
+
+テスト成功・手動再実行成功は、今後の全scheduleの30分以内起動を証明しない。GitHub側の定期起動保証がないため、この点は未達／外部起動経路の検討が必要。

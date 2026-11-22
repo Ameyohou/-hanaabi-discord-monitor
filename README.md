@@ -1,166 +1,137 @@
 # 南陽醸造 Instagram → Discord 通知
 
-## 現状（最初にお読みください）
+南陽醸造 `hanaabi_official` の通常投稿をMeta公式APIで取得し、新規投稿をDiscord Webhookに送ります。BBC News `bbcnews` は通常投稿＋リールの実運用テスト対象です。PCの常時起動は不要です。
 
-**2026年11月20日、利用者がGraph API Explorer v27.0で実行した結果により、公式APIで対象の通常投稿3件の本文・URL・日時・FEED種別を取得できることを確認しました。** この確認は利用者が共有したAPI応答に基づきます。GitHub Actions上からの接続とDiscord配送は、Secrets登録後の確認が必要です。
+## 現在の運用可否
 
-初期の匿名公開ページ検証では、HTTP 200のHTMLに投稿一覧がなく、別のWeb取得経路は429でした。このため匿名スクレイピングには依存しません。
+**投稿取得・Discord配送は実確認済みですが、「必ず30分以内の検知」はGitHub Actions単独では保証できません。** 実履歴でも数時間の起動空白が発生しています。起動回数を増やすだけで解決済みとは扱いません。
 
-非公開API、ログインCookie流用、プロキシ切替、ブラウザー偽装、CAPTCHA回避、スクレイピング代行は使用しません。公式の **Instagram API with Facebook Login / Business Discovery** だけを実装しています。対象の取得権限と3件の実投稿応答は確認済みですが、複数ページの実通信とActions実行は未検証です。匿名でそのまま動く完成サービスではありません。
+2026-11-23 JSTの見直しでは、Git pushに依存した状態保存を廃止し、専用ブランチとGitHub Contents APIによる競合検出付き保存へ変更しました。コード修正と状態更新を分離し、保存失敗・取得失敗・配送失敗を区別します。検証結果と残る制約は [AUDIT.md](AUDIT.md) を参照してください。
 
-## できること
+公開リポジトリの標準 `ubuntu-latest` ランナーを使うため、現行のGitHub料金ではランナー利用は無料です。Privateや大型ランナーへの変更は無料継続の前提から外れます。Pythonの外部依存なし。将来の料金・API仕様変更は保証しません。
 
-- GitHub Actionsで毎時17分・47分（30分間隔、UTC。日本時間も分は同じ）に起動。PCの常時起動は不要。
-- `hanaabi_official` の通常フィード投稿のみ通知。画像・カルーセル・FEED動画を対象とし、REELS/STORYは除外。
-- 投稿日時（JST）、URL、取得可能な本文を通知。本文はDiscordの文字数制約により最大1500文字。メンション無効化。
-- 初回の**成功した取得**で既存投稿をすべて記録し、投稿通知を送らない。
-- 投稿IDをGit管理の `state/state.json` に保存。キャッシュ・期限付きartifactに依存しない。
-- 全ページを取得し終えてから通知。HTTPエラー・JSON不正・スキーマ不正・途中ページの失敗をエラーとして記録し、終了コード1にする。
-- 3回連続失敗で障害通知（約90分が目安、実行遅延で変動）。同じ障害は1回通知し、復旧も通知。障害通知に失敗したら次の実行で再試行。
-- 最終成功から90分を超えた場合、次の取得成功時に監視の空白を通知。取得できる未通知投稿を古い順に補完。
-- 依存パッケージなし。Python標準ライブラリーのみ。
+## 構成と通知範囲
 
-## 無料運用の条件と限界
+|対象|取得対象|状態ファイル（monitor-stateブランチ）|
+|---|---|---|
+|南陽醸造|FEEDのみ。通常の画像・カルーセル・フィード動画|`state/state.json`|
+|BBCテスト|FEEDとREELS。STORY/ADは対象外|`state/bbcnews.json`|
 
-**Public（公開）リポジトリ＋標準のubuntu-latestランナー**を使ってください。GitHubの公開リポジトリ向け標準Actionsランナーは無料です。Privateでは無料枠の消費量が月の日数・実行時間・他の用途で変わるため、無料継続を保証できません。大型ランナー、有料サービス、課金APIは使いません。将来の各サービスの料金・仕様変更は保証できません。
+- 通知は投稿日時（JST）、URL、取得できる本文（1500文字まで）。メンションは無効。
+- 初回成功時は取得済み投稿を既存として記録し、投稿通知しません。
+- 同じIDは再通知しません。本文編集だけでは通知しません。
+- BBCは初回移行時の既存リールを記録し、移行前の古い未記録投稿は通知しません。
+- 南陽醸造は最大20ページ×100メディアの全ページを確認します。
+- BBCは前回の**配送・保存まで成功した時刻から24時間前**まで遡ります。すべてのメディアが境界より古いページまで確認し、既知IDや固定投稿だけを根拠に止めません。初回だけ直近1ページを基準にします。
+- 必要ページを取得し終えてから通知します。途中失敗・不正JSON・不明な種別・取得上限超過はエラーです。
+- APIに出ない投稿、削除済み投稿、取得期間を超えて遅れて公開された投稿、非公開・権限外の投稿の取得は保証しません。
 
-コード・投稿ID・取得日時・失敗状況は公開されます。本文と認証情報は状態ファイルに保存しません。WebhookとMetaトークンは必ずSecretsに入れてください。公開できない場合はこの構成を使わず料金条件を再検討してください。
+## 起動間隔と監視の空白
 
-GitHub Actionsのscheduleは厳密なタイマーではなく、遅延・実行の欠落があります。60日間リポジトリ活動がない公開リポジトリではscheduleが無効になる場合もあります。本実装は実行ごとに状態をコミットしますが、永続化失敗やワークフロー停止時はこれを頼りにできません。週1回はActions画面で動作を確認してください。停止中のシステム自身からDiscord通知は送れません。GitHubの失敗通知メールも有効にしてください。独立した外部死活監視は含みません。
+自動起動は `Instagram monitor` に統合しました。毎時7/17/27/37/47/57分にGitHubへ起動機会を設定し、永続状態で前回の試行から30分未満なら外部APIを呼ばず終了します。南陽醸造・BBCは同じ実行で順に確認します。BBC専用ワークフローは手動確認だけです。
 
-APIに残っていない削除済み投稿や取得権限外の投稿は補完できません。1回の取得は100件×最大20ページ。上限を超える場合は部分取得を成功扱いせず停止します。初期取得件数が多いアカウントではAPI利用量に注意してください。429やネットワーク失敗をその場で自動再試行せず、次の定期実行まで待ちます。Metaがより長い待機を要求した場合はワークフローを無効にして待ってください。
+これは起動欠落への余裕であり、GitHubの遅延をなくす仕組みではありません。**GitHub自身が起動しなかった時間帯を、そのGitHubジョブ自身が通知することもできません。** 前回成功から90分超の場合、次回成功時に監視空白を通知します。この文言は「空白中も監視できていた」という意味ではありません。
 
-## GitHubが初めての方向け
+厳密な30分周期が必要なら、独立した外部スケジューラによる起動または実行基盤の変更が必要です。外部サービスは勝手に開設・有効化していません。[extras/](extras/) の外部起動案は任意です。
 
-GitHubはコードを保管するサービスです。「リポジトリ」はこの仕組み一式を入れる箱、「Actions」はGitHub側のコンピューターで定期実行する機能、「Secrets」はパスワード等をコードと分けて保存する場所です。
+[GitHub公式のschedule制約](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule) に遅延・欠落と公開リポジトリの60日非活動による無効化が記載されています。週1回はActions履歴を確認し、GitHubの失敗メール通知を有効にしてください。
 
-### 1. 公式APIが利用できるか確認する（重要な前提）
+## 状態保存・重複防止・配送の限界
 
-Meta Business Discoveryを使うには、一般に**ご自身が管理するInstagramプロアカウント（ビジネスまたはクリエイター）と、それに紐づくFacebookページ**、Meta開発者アプリ、Facebook Loginによる適切な権限のアクセストークンが必要です。調査対象もAPI対応のビジネス／クリエイターアカウントである必要があります。対象が個人アカウントならこのAPIは使えません。
+正本は **`monitor-state` ブランチ**です。`main` の `state/` は移行時点の旧記録で、実行時には読みません。Git履歴から復元できます。本文やトークンは状態に保存しません。投稿ID・URL・DiscordメッセージID・取得状況は公開されます。
 
-1. [Meta for Developers](https://developers.facebook.com/) でアプリを作成し、Instagram API **with Facebook Login** の公式セットアップを進めます。Instagram LoginだけではこのBusiness Discovery構成は使えません。
-2. ご自身のプロアカウントとFacebookページを連携し、公式手順で `instagram_basic`、`instagram_manage_insights`、`pages_read_engagement` 等のBusiness Discoveryに必要な権限を確認します。ページの列挙には別途 `pages_show_list` 等が必要になる場合があります。アプリのモード・利用者・権限により審査や事業者確認が必要な場合があります。現在の公式ドキュメントの指示を優先してください。
-3. 公式Graph API Explorer等でトークンを取得し、**自分側のInstagramユーザーID**を確認します。対象のユーザーIDでもInstagramユーザー名でもありません。
-4. アプリで利用可能なGraph APIバージョン（今回の取得確認：`v27.0`。実際にサポートされるものを確認）を確認します。
-5. 後述のVerify connectionのfetchで、対象の実投稿件数が取得できることを確認します。成功するまで定期運用を始めないでください。
+保存はGitHub Contents APIで元のファイルSHAを指定して更新します。同時変更を検出したら上書きせず停止します。応答が失われた場合は遠隔状態を再読込して一致を照合し、一致すれば成功と判定。不一致かつ元のSHAのままなら同じ保存を最大3回まで試行します。`git push`、force push、rebaseは使いません。
 
-この認証セットアップはDiscordだけでは完結しません。ご自身のプロアカウントがない・審査を通せない場合は、下記の代替案を選んでください。トークンには有効期限・失効があります。公式ツールで期限を確認して更新し、Secretsを差し替えてください。自動延命や無断ログインは実装していません。
+配送手順：
 
-### 2. Discordの通知先を作る
+1. 実行開始を永続化する。失敗したらInstagramにもDiscordにも進まない。
+2. 必要な全ページを取得・検証。
+3. 投稿IDを `pending` に保存してからDiscordへPOST。
+4. Discord受理後、IDを `seen` に移し、`pending` を消して保存。
+5. 全通知と最終保存が済んだときだけ `last_success` を更新。
 
-通知したいサーバーのチャンネル設定 →「連携サービス」→「ウェブフック」→ 新規作成 →「ウェブフックURLをコピー」。Webhookを作成できる権限が必要です。URLはパスワードと同様の秘密情報です。チャットに貼る必要はありません。
+**Discord WebhookとGitHubの間に共通トランザクションはないため、完全な配送保証と完全な重複防止は同時には保証できません。** 送信後のネットワーク切断などで成否不明なら、`pending` を残して停止し、盲目的な再送をしません。HTTP 4xxの明確な拒否ならpendingを解除し、次の確認時に再試行できます。HTTP 429をその場で連打しません。レート制限や待機指示がある場合はサービスの指示を優先してください。
 
-### 3. GitHubにファイルを入れる
+`pending` で止まった場合：
 
-1. [GitHub](https://github.com/)で無料アカウントを作成します。
-2. 右上の「＋」→「New repository」。名前は例 `hanaabi-discord-monitor`。**Public**を選択し、README追加にチェックして作成します。
-3. 配布ZIPを解凍し、`.github` フォルダー、`monitor.py`、`tests`、`README.md`、`.gitignore` をリポジトリの直下に入れます。外側の `hanaabi-monitor` フォルダーごと入れないでください。
-4. Web画面の「Add file」→「Upload files」で追加し、「Commit changes」で保存します。隠しフォルダー `.github` が見えない場合はPCの隠しファイル表示を有効にします。アップロードできない場合は「Add file」→「Create new file」で `.github/workflows/monitor.yml` 等のパスを入力して内容を貼り付けてください。
-5. `Code` 画面で `.github/workflows/` の下に3つのYAMLがあることを確認します。
+1. 対象の定期実行を一時停止。
+2. monitor-stateブランチの `pending_url` をDiscordと照合。
+3. 届いていればIDをseenに追加しpendingをnullにする。届いていないことを確認できた場合はseenに追加せずpendingだけnullにする。
+4. 不明ならそのまま止め、確認が取れるまで再送しない。
+5. ファイル変更を保存して手動実行。
 
-リポジトリは公開されますが、次のSecretsの値は公開しません。ZIPやコードにURL・トークンを書き込まないでください。
+保存失敗時はGitHubの実行Summaryと7日保持の `recovery-...` artifactに診断用コピーを残します。このコピーは自動で正本として採用しません。状態保存・設定の異常は別経路でDiscord通知を試みますが、Webhook自体やGitHub全体の停止では通知できません。
 
-### 4. Secretsと変数を登録する
+## 障害の記録と復旧
 
-リポジトリの Settings → Secrets and variables → Actions → **Secrets** → New repository secret で以下を1件ずつ登録します。
+Summaryに対象ごとの `status`、`fetched`、`sent`、`already_seen`、`last_fetch_success`、`last_success`、`failures`、`pending` が出ます。
 
-|名前|値|
+|状態|意味と対応|
 |---|---|
-|`DISCORD_WEBHOOK_URL`|コピーしたDiscord Webhook URL（discord.com形式）|
-|`META_ACCESS_TOKEN`|Metaの公式アクセストークン|
-|`META_IG_USER_ID`|自分側の連携済みInstagramプロアカウントの数値ID|
+|`success`|取得・配送・最終保存が成功。sent=0なら未通知投稿なし|
+|`not_due`|前回試行から30分未満。APIへアクセスしていない|
+|`failed`|取得や明確な配送拒否。詳細エラーと時刻を確認|
+|`delivery_uncertain`|配送成否不明。上記pending手順で確認|
+|`error` / `state_save_failed`|状態保存や設定が失敗。Summary・artifact・GitHub権限を確認|
 
-同じ画面の **Variables** → New repository variable：
+取得等の失敗が3回続いた場合に障害通知、復旧時に復旧通知を送ります。実行自体が数時間遅れたら「3回」は90分とは限りません。状態保存ができない障害は回数を正確に保存できないため、別の運用通知を試みます。運用通知は異常終了時に重複する場合があります。
 
-|名前|値|
-|---|---|
-|`META_API_VERSION`|利用可能なAPIバージョン。今回の取得確認は `v27.0`|
+Meta `200/5258005 API access blocked` を検出した対象は、所有者の確認までAPI呼出しを止めます。Metaの「必要なアクション」や本人確認を解消後、Verify connectionのfetchを一度実行して成功を確認し、Instagram monitorのRun workflowで `resume_meta` を選んで再開します。制限回避はしません。
 
-Settings → Actions → GeneralでActionsを許可します。組織側ポリシーやブランチ保護でbotの状態コミットを禁止している場合、この構成は動きません。個人用の新規専用リポジトリが簡単です。状態更新用に監視ジョブだけ `contents: write` を要求します。外部からのPRでSecretsを使う設定はありません。
+## 導入（新規）
 
-### 5. 動作確認してから初期化する
+既に導入済みなら、初期化・トークン再発行・既存状態の削除は不要です。
 
-1. Actions → **Tests** の最新実行が緑になっていることを確認します。
-2. Actions → **Verify connection** → Run workflow → mode=`fetch`。成功し、ログに `Validated FEED posts:` の件数と最新日時が出ることを確認。Instagramで見える最新の通常投稿と日時を照合してください。投稿本文はログに出しません。
-3. 同じVerify connectionをmode=`discord`で実行。テスト通知が1件届くことを確認します。どちらも状態は変更しません。
-4. Actions → **Instagram monitor** → Run workflow → `initialize` にチェックを入れて実行。既存投稿の通知は来ません。Code画面に `state/state.json` ができ、`initialized: true` になっていることを確認します。
-5. 今度はinitializeのチェックを外して手動実行。新規投稿がなければ通知されません。
-6. Settings → Secrets and variables → Actions → Variablesで `MONITOR_ENABLED` を値 `true` で追加します。これで毎時17分・47分の自動確認を有効化します。未登録の間は定期ジョブをスキップします。新規投稿の通知は実際の新しい投稿を待って確認してください。
+1. 無料のGitHubアカウントでPublicリポジトリを作成し、このコード一式を直下に置きます。
+2. `monitor-state` ブランチをmainから作成します。既存導入では状態ファイルを保持して移行します。
+3. MetaのInstagram API **with Facebook Login** をセットアップ。管理するInstagramプロアカウントとFacebookページを連携し、アプリと必要な権限を用意します。対象もAPI対応プロアカウントである必要があります。
+4. 必要権限は公式Business Discovery手順で確認。今回確認したものは `instagram_basic`、`instagram_manage_insights`、`pages_read_engagement`、ページ確認に `pages_show_list`。アプリのモードや利用者によって審査・事業者確認が必要な場合があります。
+5. Settings → Secrets and variables → Actionsで以下を登録します。
 
-初期化チェックは状態ファイルがない初回のみの許可です。既存状態があれば初期化し直しません。最初の取得失敗時に作成される `initialized: false` の状態は、後の最初の成功時に初期化されます。状態ファイルを削除して初期化し直すと、その間の投稿が既存扱いになるため削除しないでください。
+|区分|名前|値|
+|---|---|---|
+|Secret|`META_ACCESS_TOKEN`|長期化後の文字列。短期トークンと別物です|
+|Secret|`META_IG_USER_ID`|自分側の数値IG ID。今回 `17841464909360076`|
+|Secret|`DISCORD_WEBHOOK_URL`|Discordのチャンネル設定→連携サービス→WebhookのURL|
+|Variable|`META_API_VERSION`|今回実確認した `v27.0`|
+|Variable|`MONITOR_ENABLED`|自動監視開始後は `true`|
+|Variable|`BBC_TEST_ENABLED`|BBCテストを停止する場合だけ `false`|
 
-## 障害時の確認・復旧
+`GITHUB_TOKEN` はActionsから自動供給され、状態保存用ジョブだけ `contents: write` を使います。GitHub個人トークンの追加は不要です。組織ポリシーで書込禁止の場合は動きません。
 
-Actions → Instagram monitor → 赤い実行 → Monitorを開いて `ERROR:` を確認します。
+6. Testsの成功を確認。
+7. Verify connectionを `fetch` で実行し件数・最新日時をInstagramと照合。
+8. Verify connectionを `discord` で実行し、テスト通知が届くか確認。
+9. Instagram monitorを初回だけ `initialize=true` で実行。既存投稿通知は来ません。
+10. `MONITOR_ENABLED=true` で自動確認を有効化。再実行して既存投稿が重複しないことを確認します。
 
-|表示・状況|対応|
-|---|---|
-|HTTP 401/403、API error|トークン期限・アプリ権限・アカウント種別を公式ツールで確認しSecretsを更新|
-|HTTP 429|アクセスを増やさず停止して待機。公式の利用量・待機指示を確認|
-|missing fields / unexpected response|APIの仕様・権限・APIバージョンを確認。空一覧に置換しない|
-|state missing / corrupted|GitHubのファイル履歴から直前の正常状態を復元。初期化で誤魔化さない|
-|git push failed|Actions書込権限・ブランチ保護・同時手動編集を確認。送信前保存失敗なら投稿は送信されない|
-|通知が止まる・実行履歴が増えない|Actionsの有効状態、デフォルトブランチのYAML、GitHub Statusを確認し手動実行|
-|障害通知も届かない|Discord Webhookと権限を確認。GitHub側停止や永続化失敗ではDiscordへの通知は保証できない|
+トークン値はチャット・Issues・公開ファイルに貼りません。デバッガーで期限と実際の権限を確認し、期限前にSecretsを差し替えます。表示される期限を延ばしただけでGitHubの値は更新されません。Metaの本人確認やトークン失効は人の対応が必要です。
 
-### 送信成否が不明な場合（pending）
+## 手動確認
 
-Discord Webhookにはこの用途の重複排除トランザクションがありません。「Discordに届いた直後にGitHubへの保存が失敗」等では、完全な重複防止と完全な配送保証を同時には実現できません。本実装は**通常投稿の自動重複送信防止を優先し、不明時は停止**します。通信エラーが明確な拒否でも、保守的にpendingを維持します。
+- 通信だけ：Actions → Verify connection → `fetch`（状態を変更しない）
+- Discordテスト：同画面で `discord`（テスト通知を1件送る）
+- 本番とBBCをすぐ確認：Actions → Instagram monitor → Run workflow
+- BBCだけ確認：Actions → BBC test monitor → Run workflow
+- 同じ投稿が再通知されないか：成功後にもう一度手動実行し、Summaryの `sent=0` を確認
 
-1. ワークフローを一時的に無効にし、`state/state.json` の `pending` にある投稿IDを確認。
-2. Discordに該当投稿が届いたか確認。届いていれば、そのIDを `seen` 配列に追加（既にあれば追加不要）。届いていなければ `seen` に追加しません。不明なら確認が取れるまで再開しないでください。
-3. `pending` を `null` に変更しコミット。その他の状態は維持。
-4. ワークフローを有効化して手動実行。seenにない投稿は取得できれば通知されます。
+古い実行のRe-run jobsより、現在のワークフローから新しくRun workflowを使用してください。コードが更新済みでも、古いワークフローの環境変数は古いままの場合があります。
 
-投稿IDは数値ではなく文字列（例 `"123456789"`）で保存します。復旧・障害・監視空白の運用通知は投稿と同じpending管理ではないため、異常終了時に再通知される可能性があります。
+スマホ通知はDiscord・OS側でチャンネルの「すべてのメッセージ」と通知許可を有効にしてください。Discordに配送されたことと、スマホにプッシュが出ることは別です。
 
 ## テスト
-
-PCにPython 3.12以上がある場合、解凍したフォルダーで以下を実行できます。ローカルテストにSecretsは不要で、外部ネットワークへアクセスしません。GitHubでもTestsが同じテストを実行します。
 
 ```sh
 python -m unittest discover -s tests -v
 ```
 
-30件：401/403/429/500、タイムアウト、不正JSON、欠落フィールド、2ページ目の失敗、ページング・循環、FEED選別、空一覧、初回・重複抑止、3回連続失敗と復旧、Discord送信失敗、送信前保存失敗、長時間空白からの補完、メンション抑止を検証。API応答は模擬しているため、この合格だけでは実Instagramの取得成功を示しません。
+外部通信なしで実施します。HTTP 401/403/429/500、不正JSON・応答、ページング途中失敗、固定投稿と時間範囲、対象種別、初期化、リール移行、ID重複防止、送信前保存失敗、送信後の応答喪失、別runnerからの再開、保存競合、APIブロック、起動間隔を確認します。単体テスト成功だけで定期起動やMetaの継続アクセスが保証されるわけではありません。
 
-## 公式APIが使えない場合の代替案
+## 代替案と公式資料
 
-- 最も簡単・無料：Instagramアプリで `@hanaabi_official` の投稿通知をオンにする（Discordへの自動転送にはなりません）。
-- 南陽醸造側に協力を依頼し、所有者の認可を受けた公式API連携、または公式のRSS/更新フィードが提供可能か相談する。提供・許諾が確認できれば、そのソース向けに取得部分を変更する必要があります。
-- 公式サイト等に許諾済みRSSが実在する場合はRSS監視へ切り替える。現時点で利用可能なフィードを確認できたわけではありません。
+Metaが利用できない場合はInstagramアプリの投稿通知を使うか、南陽醸造側の許諾された別フィードを検討します。匿名スクレイピング、非公開API、Cookie流用、CAPTCHAやアクセス制限の回避、有料代行は使いません。
 
-「無料・無認証・第三者のInstagram投稿・30分ごと・安定したDiscord通知」の全条件を、今回の検証結果から満たせるとは言えません。有料スクレイピングサービスに置き換えたり制限回避を追加したりしないでください。
-
-参考：
 - [Meta Business Discovery](https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/business_discovery/)
-- [GitHub scheduleの制約](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
+- [GitHub schedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
+- [GitHub Contents API](https://docs.github.com/en/rest/repos/contents)
 - [GitHub Actions料金](https://docs.github.com/en/billing/concepts/product-billing/github-actions)
-- [Discord Webhook](https://discord.com/developers/docs/resources/webhook)
-
-今回確認した自分側Instagram IDは `17841464909360076`、APIバージョンは `v27.0` です。長期トークンの有効期限は利用者確認で2027年1月19日。更新目安は1月12日です（リマインダーの自動設定はしていません）。トークンは共有せず、`META_ACCESS_TOKEN` Secretに登録してください。
-
-Webhook URLは前後の空白を除去し、discord.com、discordapp.com、canary.discord.com、ptb.discord.comのHTTPS Webhookを受け付けます。チャンネルのURLやWebhook IDだけは使えません。
-
-## BBC Newsでの実投稿テスト
-
-`BBC test monitor` を追加しました。初回はデプロイ時に自動実行し、以後毎時23分・53分に `bbcnews` を公式Business Discoveryで確認します。南陽醸造は従来どおり毎時17分・47分です。両ワークフローは同じconcurrencyグループで直列化し、状態コミットの競合を防ぎます。
-
-BBCの状態は `state/bbcnews.json` に分離し、通知には `【テスト】BBC News` を付けます。初回成功時は直近100メディア内の通常投稿を記録するだけで通知しません。次回以降は既知の通常投稿を含むページに到達するまで遡り、未通知のFEED投稿のみ通知します。リールは対象外。最大20ページで境界に到達しなければ部分取得を成功扱いせずエラーになります。BBCの全アーカイブは取得しません。
-
-`Actions → BBC test monitor` の初回が緑になり、ログで `bbcnews: initialized=True` を確認できれば初期化成功です。公式APIからBBCを取得できない場合はログに失敗を記録し、成功とは報告しません。新しい通常投稿が届いた後に手動のRun workflowで再確認し、同じ投稿が再通知されないことも確認できます。実投稿がいつ公開されるかは保証できません。
-
-テスト終了時はSettings → Secrets and variables → Actions → Variablesに `BBC_TEST_ENABLED` を値 `false` で追加して停止します。南陽醸造の監視は続行します。再開時に記録は維持されます。BBCの投稿がDiscordに届くことは配送の確認であり、スマホのプッシュ通知設定はDiscordとOS側で別途確認してください。
-
-BBCテストは新しい順の取得を前提に、既知投稿を含むページ全体を処理してから終了します。過去投稿の並べ替えや遅延公開を完全に補完する保証はありません。本番の南陽醸造は全ページ取得を維持します。
-
-## Metaから明示的なアクセスブロックが返った場合
-
-2026-11-22 JSTの調査で `HTTP 400 / code=200 / error_subcode=5258005 / API access blocked.` を確認しました。`state/meta-api-paused.json` を設置し、BBC・南陽醸造とも定期実行からのMeta API呼出しを停止しています。状態の記録とGitHubログは維持します。制限回避・トークン再発行の繰り返しはしません。
-
-Metaアプリの「必要なアクション」「アラート受信箱」、アプリやFacebook/Instagramの利用制限・確認要求を所有者が確認し、Metaの案内に沿って解消する必要があります。このコードだけから解除はできません。解消後は手動のVerify connection（fetch）で一度だけ公式APIへの接続を確認できます。確認成功後に停止マーカーを削除して再開します。通知済み状態は削除しません。手動の接続確認の繰り返しは避けてください。
-
-## BBCリール監視の追加
-BBCのみFEEDとREELSを対象にします。初回移行時に直近の既存リールを記録し、移行時刻より前のリールは後のページ取得でも通知しません。通常投稿の通知済み履歴は維持します。次回以降の新しいリールを同じDiscordへ「リール」と表示して通知します。南陽醸造はFEEDのみです。
-
-GitHubへの状態pushの一時失敗は、同じコミットを最大3回（2秒・5秒待機）で再試行します。Webhookの送信は再試行しません。force push/rebaseはしません。保存が継続失敗したら終了します。定期schedule自体の数時間の空白はこの再試行で解消しません。2026-11-23 JST時点の実履歴では数時間間隔となる実行があり、30分間隔の継続実行は未達です。

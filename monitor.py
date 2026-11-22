@@ -4,17 +4,20 @@ import json
 import os
 from pathlib import Path
 import re
-import subprocess
 import sys
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
+from state_store import make_store, StateError
+
 TARGET = 'hanaabi_official'
 
 class MonitorError(Exception):
-    pass
+    def __init__(self, message, *, status=None, meta_code=None, meta_subcode=None):
+        super().__init__(message)
+        self.status, self.meta_code, self.meta_subcode = status, meta_code, meta_subcode
+        self.provider_blocked = meta_code == 200 and meta_subcode == 5258005
 
 
 def request_json(url, *, token=None, payload=None):
@@ -35,8 +38,11 @@ def request_json(url, *, token=None, payload=None):
         # Extract only safe numeric codes and fixed classifications, never raw
         # messages/URLs: Meta may echo credentials in diagnostic strings.
         detail = ''
+        err = {}
         try:
             err = json.loads(e.read(65536)).get('error', {})
+            if not isinstance(err, dict):
+                err = {}
             fields = []
             for key in ('code', 'error_subcode'):
                 if type(err.get(key)) is int:
@@ -64,7 +70,8 @@ def request_json(url, *, token=None, payload=None):
                 detail += ': ' + explanation[:400]
         except (ValueError, TypeError, AttributeError, OSError):
             pass
-        raise MonitorError(f'HTTP {e.code}{detail}; no automatic retry') from None
+        raise MonitorError(f'HTTP {e.code}{detail}; no automatic retry', status=e.code,
+                           meta_code=err.get('code'), meta_subcode=err.get('error_subcode')) from None
     except json.JSONDecodeError:
         raise MonitorError('response was not valid JSON') from None
     except urllib.error.URLError as e:
@@ -85,7 +92,7 @@ def timestamp(value):
         raise MonitorError('invalid post timestamp') from None
 
 
-def fetch_posts(env, request=request_json, *, target=TARGET, known_ids=None, recent_baseline=False, include_reels=False):
+def fetch_posts(env, request=request_json, *, target=TARGET, known_ids=None, recent_baseline=False, include_reels=False, lower_bound=None):
     if Path('state/meta-api-paused.json').exists() and env.get('ALLOW_META_PROBE') != 'true':
         raise MonitorError('Meta API access is paused after API access blocked (200/5258005); resolve the restriction in Meta before resuming')
     token = env.get('META_ACCESS_TOKEN', '').strip()
@@ -123,10 +130,11 @@ def fetch_posts(env, request=request_json, *, target=TARGET, known_ids=None, rec
                 if 'caption' in p and not isinstance(p['caption'], str):
                     raise ValueError()
                 posts[p['id']] = p
-            # Test account: baseline only the recent page, then page back to an
-            # page overlapping the previous FEED baseline. Do not scan a large news archive each run.
+            # A complete time window tolerates pinned/known posts near the top.
             page_feed = [p for p in rows if p['media_product_type'] in products]
-            if recent_baseline or (known_ids and page_feed and any(p['id'] in known_ids for p in page_feed)):
+            window_complete = lower_bound is not None and rows and all(
+                timestamp(p['timestamp']) < lower_bound for p in rows)
+            if recent_baseline or window_complete or (lower_bound is None and known_ids and page_feed and any(p['id'] in known_ids for p in page_feed)):
                 return sorted(posts.values(), key=lambda p: (timestamp(p['timestamp']), p['id']))
             paging = media.get('paging', {})
             cursor = paging.get('cursors', {}).get('after')
@@ -162,7 +170,7 @@ def discord(text, env, request=request_json):
             urllib.parse.urlencode(query, doseq=True), ''))
     except ValueError:
         raise MonitorError('DISCORD_WEBHOOK_URL: malformed URL; copy it again from Discord') from None
-    request(endpoint, payload={'content': text[:1900], 'allowed_mentions': {'parse': []}})
+    return request(endpoint, payload={'content': text.encode('utf-16-le')[:3800].decode('utf-16-le', errors='ignore'), 'allowed_mentions': {'parse': []}})
 
 
 def initial_state():
@@ -172,32 +180,60 @@ def initial_state():
 
 def run(state, fetch, send, save, now, label="南陽醸造"):
     state['last_run'] = now.isoformat()
+    stats = {'target': label, 'fetched': 0, 'sent': 0, 'already_seen': 0}
+    state['last_result'] = stats
     try:
+        if state.get('provider_blocked'):
+            if os.environ.get('RESUME_META') == 'true':
+                state['provider_blocked'] = False
+            else:
+                raise MonitorError('Meta account access blocked; owner verification is required before resume')
         if state['pending']:
             raise MonitorError('uncertain prior delivery; resolve pending in state before resuming')
-        posts = fetch()  # Must finish all pages before changing baseline or sending.
+        stats['status'] = 'fetching'
+        save(state)  # Persist the attempt before using either external API.
+        posts = fetch()  # Finish every required page before baseline or delivery.
+        state['last_fetch_success'] = now.isoformat()
+        stats['fetched'] = len(posts)
+        stats['status'] = 'fetched'
         if not state['initialized']:
             state['seen'] = [p['id'] for p in posts]
             state['initialized'] = True
         else:
             for p in posts:
                 if p['id'] in state['seen']:
+                    stats['already_seen'] += 1
                     continue
                 state['pending'] = p['id']
-                save(state)  # Durable BEFORE sending: no blind retry after a crash.
+                state['pending_url'] = p['permalink']
+                state['pending_since'] = now.isoformat()
+                stats['status'] = 'delivery_in_progress'
+                save(state)  # Must be durable before the POST.
                 local = timestamp(p['timestamp']).astimezone(dt.timezone(dt.timedelta(hours=9)))
-                send(f'{label} 新規投稿（{"リール" if p.get("media_product_type") == "REELS" else "通常投稿"}）\n投稿日時: {local:%Y-%m-%d %H:%M:%S} JST\n{p["permalink"]}\n{p.get("caption", "（本文なし／取得不可）")[:1500]}')
+                receipt = send(f'{label} 新規投稿（{"リール" if p.get("media_product_type") == "REELS" else "通常投稿"}）\n投稿日時: {local:%Y-%m-%d %H:%M:%S} JST\n{p["permalink"]}\n{p.get("caption", "（本文なし／取得不可）")[:1500]}')
                 state['seen'].append(p['id'])
+                stats['sent'] += 1
+                if isinstance(receipt, dict) and receipt.get('id'):
+                    state['last_discord_message_id'] = receipt['id']
                 state['pending'] = None
                 save(state)
         if state['last_success'] and now - timestamp(state['last_success']) > dt.timedelta(minutes=90):
             send(f'{label}: 監視の空白を検出しました（前回成功から90分超）。取得可能な投稿を再確認しました。')
         if state['alerted']:
             send(f'{label}: Instagram投稿取得が復旧しました。')
-        state.update(failures=0, alerted=False, last_success=now.isoformat())
+        state.update(failures=0, alerted=False, last_success=now.isoformat(), last_error=None)
+        state.pop('pending_url', None)
+        state.pop('pending_since', None)
+        stats['status'] = 'success'
         save(state)
         return 0
     except MonitorError as e:
+        if e.provider_blocked:
+            state['provider_blocked'] = True
+        # HTTP 4xx is a definitive refusal; only unknown delivery outcomes stay pending.
+        if state['pending'] and e.status is not None and 400 <= e.status < 500:
+            state['pending'] = None
+        stats['status'] = 'delivery_uncertain' if state['pending'] else 'failed'
         state['failures'] += 1
         state['last_error'] = str(e)
         print('ERROR:', e, file=sys.stderr)
@@ -211,27 +247,15 @@ def run(state, fetch, send, save, now, label="南陽醸造"):
         return 1
 
 
-def push_state(run_command=subprocess.run, sleep=time.sleep):
-    # Retry only persistence of the SAME commit. Never replay the webhook,
-    # rebase, or force-push after a delivery.
-    for attempt in range(3):
-        result = run_command(['git', 'push', 'origin', 'HEAD'], stdout=subprocess.DEVNULL)
-        if result.returncode == 0:
-            return
-        if attempt < 2:
-            print(f'WARNING: state push failed; retry {attempt + 1}/2', file=sys.stderr)
-            sleep((2, 5)[attempt])
-    raise subprocess.CalledProcessError(result.returncode, ['git', 'push', 'origin', 'HEAD'])
-
-
 def main(target=TARGET):
     if target not in (TARGET, 'bbcnews'):
         raise MonitorError('unsupported target')
     is_bbc = target == 'bbcnews'
-    path = Path('state/bbcnews.json' if is_bbc else 'state/state.json')
-    if path.exists():
+    path = 'state/bbcnews.json' if is_bbc else 'state/state.json'
+    store = make_store(path)
+    state = store.read()
+    if state is not None:
         try:
-            state = json.loads(path.read_text())
             expected = initial_state()
             if state.get('version') != 1 or any(k not in state for k in expected):
                 raise ValueError()
@@ -252,23 +276,21 @@ def main(target=TARGET):
         raise MonitorError('state missing; use manual initialize=true only for first setup')
 
     def save(value):
-        path.parent.mkdir(exist_ok=True)
-        temp = path.with_suffix('.tmp')
-        temp.write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n')
-        temp.replace(path)
-        if os.environ.get('PERSIST_GIT') == 'true':
-            # A persistence failure must stop execution before any later webhook.
-            subprocess.run(['git', 'add', str(path)], check=True)
-            changed = subprocess.run(['git', 'diff', '--cached', '--quiet']).returncode
-            if changed:
-                subprocess.run(['git', 'commit', '-m', 'Update monitor state [skip ci]'], check=True, stdout=subprocess.DEVNULL)
-                push_state()
+        store.save(value)
+
+    now = dt.datetime.now(dt.timezone.utc)
+    if (os.environ.get('RESPECT_INTERVAL') == 'true' and os.environ.get('FORCE_CHECK') != 'true'
+            and state.get('last_run') and now - timestamp(state['last_run']) < dt.timedelta(minutes=30)):
+        record_summary(target, {'status': 'not_due', 'last_fetch_success': state.get('last_fetch_success')})
+        print(f'{target}: not due; API was not called')
+        return 0
     def fetch():
         migrating = is_bbc and not state.get('reels_enabled', False)
+        lookback = timestamp(state['last_success']) - dt.timedelta(hours=24) if is_bbc and state.get('last_success') else None
         posts = fetch_posts(os.environ, target=target,
             known_ids=set(state['seen']) if is_bbc and state['initialized'] else None,
             recent_baseline=is_bbc and (not state['initialized'] or migrating),
-            include_reels=is_bbc)
+            include_reels=is_bbc, lower_bound=lookback)
         if migrating:
             # Only mark existing Reels as seen; never reset existing FEED history.
             for p in posts:
@@ -278,21 +300,57 @@ def main(target=TARGET):
             state['reels_enabled'] = True
             save(state)
             print('BBC Reels baseline recorded; existing Reels will not be sent')
-        if is_bbc:
+        if is_bbc and state['initialized']:
+            # Do not notify unrecorded history older than the original tracking baseline.
+            baseline = timestamp(state['reels_since'])
+            posts = [p for p in posts if p['id'] in state['seen'] or timestamp(p['timestamp']) >= baseline]
             posts = [p for p in posts if p['media_product_type'] != 'REELS'
                      or p['id'] in state['seen']
                      or timestamp(p['timestamp']) >= timestamp(state['reels_since'])]
         return posts
 
-    result = run(state, fetch, lambda s: discord(s, os.environ), save,
-                 dt.datetime.now(dt.timezone.utc), label='【テスト】BBC News' if is_bbc else '南陽醸造')
-    print(f'{target}: initialized={state["initialized"]}, seen={len(state["seen"])}, failures={state["failures"]}')
+    try:
+        result = run(state, fetch, lambda text: discord(text, os.environ), save,
+                     now, label='【テスト】BBC News' if is_bbc else '南陽醸造')
+    except StateError:
+        record_summary(target, {'status': 'state_save_failed', 'pending': state.get('pending'),
+                                'last_fetch_success': state.get('last_fetch_success')})
+        raise
+    record_summary(target, dict(state.get('last_result', {}),
+                   last_fetch_success=state.get('last_fetch_success'),
+                   last_success=state.get('last_success'), failures=state['failures'], pending=state['pending']))
+    print(json.dumps({'target': target, **state.get('last_result', {}), 'seen': len(state['seen'])}, ensure_ascii=False))
     return result
 
 
-if __name__ == '__main__':
+def record_summary(target, value):
+    path = Path('work/runtime/summary.json')
+    path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        sys.exit(main('bbcnews' if sys.argv[1:] == ['--bbc'] else TARGET))
-    except MonitorError as e:
-        print('ERROR:', e, file=sys.stderr)
-        sys.exit(1)
+        all_results = json.loads(path.read_text()) if path.exists() else {}
+    except ValueError:
+        all_results = {}
+    all_results[target] = value
+    path.write_text(json.dumps(all_results, ensure_ascii=False, indent=2))
+    if os.environ.get('GITHUB_STEP_SUMMARY'):
+        with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
+            stream.write('\n### ' + target + '\n\n```json\n' + json.dumps(value, ensure_ascii=False, indent=2) + '\n```\n')
+
+
+def cli():
+    targets = [TARGET, 'bbcnews'] if '--all' in sys.argv else ['bbcnews' if '--bbc' in sys.argv else TARGET]
+    failed = False
+    for target in targets:
+        if target == 'bbcnews' and os.environ.get('BBC_TEST_ENABLED') == 'false':
+            continue
+        try:
+            failed = main(target) != 0 or failed
+        except (MonitorError, StateError) as error:
+            print(f'ERROR: {target}: {error}', file=sys.stderr)
+            record_summary(target, {'status': 'error', 'error': str(error)})
+            failed = True
+    return int(failed)
+
+
+if __name__ == '__main__':
+    sys.exit(cli())
