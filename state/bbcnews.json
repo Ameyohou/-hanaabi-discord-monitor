@@ -109,11 +109,11 @@
     "18109686305459431",
     "18110612924258114"
   ],
-  "pending": null,
+  "pending": "18112366199631674",
   "failures": 0,
   "alerted": false,
   "last_success": "2026-11-22T16:45:02.632315+00:00",
-  "last_run": "2026-11-22T16:45:02.632315+00:00",
+  "last_run": "2026-11-22T19:52:03.798263+00:00",
   "last_error": "Meta API access is paused after API access blocked (200/5258005); resolve the restriction in Meta before resuming",
   "reels_since": "2026-11-22T16:45:04.127281+00:00",
   "reels_enabled": true
