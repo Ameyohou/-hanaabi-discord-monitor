@@ -14,14 +14,12 @@
     },
     "fetched": 139,
     "sent": 2,
-    "status": "delivery_in_progress",
+    "status": "success",
     "target": "【テスト】BBC News"
   },
   "last_run": "2026-11-23T22:17:26.932710+00:00",
-  "last_success": "2026-11-23T21:47:36.130219+00:00",
+  "last_success": "2026-11-23T22:17:35.730396+00:00",
   "pending": null,
-  "pending_since": "2026-11-23T22:17:26.932710+00:00",
-  "pending_url": "https://www.instagram.com/reel/DgGbLNLjKQi/",
   "reels_enabled": true,
   "reels_since": "2026-11-22T16:45:04.127281+00:00",
   "seen": [
