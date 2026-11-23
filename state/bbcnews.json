@@ -5,17 +5,23 @@
   "initialized": true,
   "last_discord_message_id": "1574451364086419499",
   "last_error": null,
-  "last_fetch_success": "2026-11-23T15:47:36.006831+00:00",
+  "last_fetch_success": "2026-11-23T16:17:29.993421+00:00",
   "last_result": {
-    "already_seen": 0,
-    "fetched": 0,
+    "already_seen": 121,
+    "by_type": {
+      "FEED": 24,
+      "REELS": 98
+    },
+    "fetched": 122,
     "sent": 0,
-    "status": "fetching",
+    "status": "delivery_in_progress",
     "target": "【テスト】BBC News"
   },
   "last_run": "2026-11-23T16:17:26.335744+00:00",
   "last_success": "2026-11-23T15:47:38.482836+00:00",
-  "pending": null,
+  "pending": "18117897899465952",
+  "pending_since": "2026-11-23T16:17:26.335744+00:00",
+  "pending_url": "https://www.instagram.com/reel/DgFxhNImej0/",
   "reels_enabled": true,
   "reels_since": "2026-11-22T16:45:04.127281+00:00",
   "seen": [
