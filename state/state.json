@@ -4,17 +4,23 @@
   "failures": 0,
   "initialized": true,
   "last_error": null,
-  "last_fetch_success": "2026-11-23T23:17:27.856921+00:00",
+  "last_fetch_success": "2026-11-23T23:47:31.904128+00:00",
   "last_result": {
-    "already_seen": 0,
-    "fetched": 0,
+    "already_seen": 371,
+    "by_type": {
+      "FEED": 372,
+      "REELS": 0
+    },
+    "fetched": 372,
     "sent": 0,
-    "status": "fetching",
+    "status": "delivery_in_progress",
     "target": "南陽醸造"
   },
   "last_run": "2026-11-23T23:47:27.706359+00:00",
   "last_success": "2026-11-23T23:17:27.858428+00:00",
-  "pending": null,
+  "pending": "18155426704539929",
+  "pending_since": "2026-11-23T23:47:27.706359+00:00",
+  "pending_url": "https://www.instagram.com/p/DgGcX1jz81u/",
   "seen": [
     "18001482514520621",
     "17988644209627002",
