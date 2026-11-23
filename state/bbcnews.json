@@ -7,17 +7,13 @@
   "last_error": null,
   "last_fetch_success": "2026-11-23T20:17:31.108248+00:00",
   "last_result": {
-    "already_seen": 130,
-    "by_type": {
-      "FEED": 25,
-      "REELS": 107
-    },
-    "fetched": 132,
-    "sent": 2,
-    "status": "success",
+    "already_seen": 0,
+    "fetched": 0,
+    "sent": 0,
+    "status": "fetching",
     "target": "【テスト】BBC News"
   },
-  "last_run": "2026-11-23T20:17:27.252430+00:00",
+  "last_run": "2026-11-23T20:47:25.103815+00:00",
   "last_success": "2026-11-23T20:17:36.289800+00:00",
   "pending": null,
   "reels_enabled": true,
