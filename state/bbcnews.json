@@ -3,7 +3,7 @@
   "alerted": false,
   "failures": 0,
   "initialized": true,
-  "last_discord_message_id": "1574466447781011456",
+  "last_discord_message_id": "1574473984278269995",
   "last_error": null,
   "last_fetch_success": "2026-11-23T17:17:29.117006+00:00",
   "last_result": {
@@ -13,13 +13,13 @@
       "REELS": 100
     },
     "fetched": 124,
-    "sent": 0,
+    "sent": 1,
     "status": "delivery_in_progress",
     "target": "【テスト】BBC News"
   },
   "last_run": "2026-11-23T17:17:26.174574+00:00",
   "last_success": "2026-11-23T16:47:34.924470+00:00",
-  "pending": "17965805859227660",
+  "pending": null,
   "pending_since": "2026-11-23T17:17:26.174574+00:00",
   "pending_url": "https://www.instagram.com/reel/DgF5FIskVcn/",
   "reels_enabled": true,
@@ -147,7 +147,8 @@
     "18444709690177511",
     "17944539216164613",
     "18117897899465952",
-    "17954157378056035"
+    "17954157378056035",
+    "17965805859227660"
   ],
   "version": 1
 }
