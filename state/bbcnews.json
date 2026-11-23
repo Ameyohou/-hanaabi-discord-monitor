@@ -5,16 +5,20 @@
   "initialized": true,
   "last_discord_message_id": "1574436272032849950",
   "last_error": null,
-  "last_fetch_success": "2026-11-23T14:47:37.719915+00:00",
+  "last_fetch_success": "2026-11-23T15:17:32.886871+00:00",
   "last_result": {
-    "already_seen": 0,
-    "fetched": 0,
+    "already_seen": 120,
+    "by_type": {
+      "FEED": 24,
+      "REELS": 96
+    },
+    "fetched": 120,
     "sent": 0,
-    "status": "fetching",
+    "status": "success",
     "target": "【テスト】BBC News"
   },
   "last_run": "2026-11-23T15:17:28.420637+00:00",
-  "last_success": "2026-11-23T14:47:40.216877+00:00",
+  "last_success": "2026-11-23T15:17:32.886979+00:00",
   "pending": null,
   "reels_enabled": true,
   "reels_since": "2026-11-22T16:45:04.127281+00:00",
