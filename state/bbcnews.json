@@ -1,16 +1,16 @@
 {
   "account": "bbcnews",
   "alerted": false,
-  "failures": 0,
+  "failures": 1,
   "initialized": true,
   "last_discord_message_id": "1574564596793081916",
-  "last_error": null,
+  "last_error": "HTTP 500 (Meta code=1): Please reduce the amount of data you're asking for, then retry your request; no automatic retry",
   "last_fetch_success": "2026-11-24T00:17:34.591658+00:00",
   "last_result": {
     "already_seen": 0,
     "fetched": 0,
     "sent": 0,
-    "status": "fetching",
+    "status": "failed",
     "target": "【テスト】BBC News"
   },
   "last_run": "2026-11-24T00:47:30.746189+00:00",
