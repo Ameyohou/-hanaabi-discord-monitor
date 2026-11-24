@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   monitor:
-    if: vars.BBC_TEST_ENABLED != 'false'
+    if: false # BBC test stopped at owner's request
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

@@ -39,7 +39,7 @@ jobs:
       META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
       META_IG_USER_ID: ${{ secrets.META_IG_USER_ID }}
       META_API_VERSION: ${{ vars.META_API_VERSION }}
-      BBC_TEST_ENABLED: ${{ vars.BBC_TEST_ENABLED }}
+      BBC_TEST_ENABLED: 'false'
       RESPECT_INTERVAL: 'true'
       FORCE_CHECK: ${{ github.event_name != 'schedule' && inputs.respect_interval != true && 'true' || 'false' }}
       RESUME_META: ${{ inputs.resume_meta == true && 'true' || 'false' }}
@@ -54,6 +54,9 @@ jobs:
           python-version: '3.12'
       - name: Monitor both accounts
         run: python monitor.py --all
+      - name: Daily status after 20 JST
+        if: always()
+        run: python daily_status.py
       - name: Report state or configuration failure
         if: failure()
         run: python ops_alert.py

@@ -358,7 +358,8 @@ def cli():
     targets = [TARGET, 'bbcnews'] if '--all' in sys.argv else ['bbcnews' if '--bbc' in sys.argv else TARGET]
     failed = False
     for target in targets:
-        if target == 'bbcnews' and os.environ.get('BBC_TEST_ENABLED') == 'false':
+        if target == 'bbcnews' and (not json.loads(Path(__file__).with_name('monitor_config.json').read_text()).get('bbc_enabled', False)
+                                   or os.environ.get('BBC_TEST_ENABLED') == 'false'):
             continue
         try:
             failed = main(target) != 0 or failed
