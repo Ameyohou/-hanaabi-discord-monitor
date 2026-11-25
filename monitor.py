@@ -253,6 +253,9 @@ def due_in_slot(state, now):
     # Each UTC half-hour has one check. Avoid cumulative drift from a few
     # seconds of runner/HTTP jitter on a strict elapsed-time threshold.
     previous = state.get('last_run')
+    if (not state.get('pending') and state.get('last_result', {}).get('status')
+            in ('fetching', 'delivery_in_progress')):
+        return True  # Previous serialized job ended without a completion checkpoint.
     return previous is None or int(timestamp(previous).timestamp() // 1800) < int(now.timestamp() // 1800)
 
 

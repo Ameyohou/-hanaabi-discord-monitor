@@ -56,6 +56,12 @@ class ReliabilityTests(unittest.TestCase):
                             m.main()
                         fetch.assert_not_called()
             finally:os.chdir(old)
+    def test_unfinished_checkpoint_can_resume_in_same_slot(self):
+        now=dt.datetime(2026,11,26,1,17,tzinfo=dt.timezone.utc)
+        state={'last_run':now.isoformat(),'last_result':{'status':'fetching'},'pending':None}
+        self.assertTrue(m.due_in_slot(state,now))
+        state['pending']='123'
+        self.assertFalse(m.due_in_slot(state,now))
     def test_interval_gate_never_calls_api(self):
         with tempfile.TemporaryDirectory() as tmp:
             old=os.getcwd()

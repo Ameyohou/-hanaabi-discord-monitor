@@ -21,7 +21,8 @@ class HTTPFailure(Exception):
 
 def github_request(method, url, token, body=None):
     headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json',
-               'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'HanaabiMonitor/2.0'}
+               'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'HanaabiMonitor/2.0',
+               'Cache-Control': 'no-cache', 'Pragma': 'no-cache'}
     if body is not None:
         headers['Content-Type'] = 'application/json'
     req = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None,
@@ -74,7 +75,7 @@ class GitHubStore:
 
     def _read_remote(self):
         try:
-            result = self.request('GET', self.url + '?' + urllib.parse.urlencode({'ref': self.branch}), self.token)
+            result = self.request('GET', self.url + '?' + urllib.parse.urlencode({'ref': self.branch, '_read_nonce': time.time_ns()}), self.token)
         except HTTPFailure as error:
             if error.status == 404:
                 return None, None
@@ -112,6 +113,7 @@ class GitHubStore:
                 'content': base64.b64encode(encode(state)).decode()}
         if self.sha:
             body['sha'] = self.sha
+        last_status = 'unknown'
         for attempt in range(3):
             try:
                 result = self.request('PUT', self.url, self.token, body)
@@ -120,7 +122,9 @@ class GitHubStore:
                     raise KeyError('missing SHA')
                 self.sha = new_sha
                 return
-            except (HTTPFailure, KeyError, TypeError):
+            except (HTTPFailure, KeyError, TypeError) as error:
+                last_status = error.status if isinstance(error, HTTPFailure) else 'invalid_response'
+                print(f'WARNING: GitHub state PUT unconfirmed (HTTP {last_status}); reconciling')
                 # A PUT can succeed even if its response is lost. Reconcile first.
                 try:
                     remote, remote_sha = self._read_remote()
@@ -133,7 +137,20 @@ class GitHubStore:
                     raise StateError('state changed concurrently; stopped without overwriting')
                 if attempt < 2:
                     self.sleep((2, 5)[attempt])
-        raise StateError('GitHub state save unconfirmed; stopped before further delivery')
+        # Last bounded read-only reconciliation: a successful write may become
+        # visible after its failed/lost reply. Never change the expected SHA.
+        for delay in (2, 5, 10):
+            self.sleep(delay)
+            try:
+                remote, remote_sha = self._read_remote()
+            except StateError:
+                continue
+            if remote == state:
+                self.sha = remote_sha
+                return
+            if remote_sha != self.sha:
+                raise StateError('state changed concurrently; stopped without overwriting')
+        raise StateError(f'GitHub state save unconfirmed (last PUT HTTP {last_status}); stopped before further delivery')
 
 
 def make_store(path):

@@ -65,6 +65,18 @@ class StateStoreTests(unittest.TestCase):
         with self.assertRaises(StateError):store.save({'seen':['1','2']})
         self.assertEqual(server.puts,3)
         self.assertEqual(json.loads(Path('work/runtime/bbcnews.json').read_text()),{'seen':['1','2']})
+    def test_delayed_visibility_of_committed_put_is_reconciled(self):
+        class DelayedServer(Server):
+            remaining=3
+            def request(self,method,url,token,body=None):
+                if method=='GET' and self.puts and self.remaining:
+                    self.remaining-=1
+                    return {'sha':'old','content':base64.b64encode(encode({'seen':['1']})).decode()}
+                return super().request(method,url,token,body)
+        server=DelayedServer({'seen':['1']});store=self.store(server);store.read();server.fail_after=True
+        store.save({'seen':['1','2']})
+        self.assertEqual(store.sha,server.sha)
+        self.assertEqual(server.state,{'seen':['1','2']})
     def test_save_requires_initial_read(self):
         with self.assertRaises(StateError):self.store(Server()).save({})
     def test_corrupt_state_is_not_reinitialized(self):
