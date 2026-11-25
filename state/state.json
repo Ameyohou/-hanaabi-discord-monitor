@@ -5,16 +5,20 @@
   "initialized": true,
   "last_discord_message_id": "1574624973895508119",
   "last_error": null,
-  "last_fetch_success": "2026-11-25T11:17:23.353322+00:00",
+  "last_fetch_success": "2026-11-25T11:47:27.489713+00:00",
   "last_result": {
-    "already_seen": 0,
-    "fetched": 0,
+    "already_seen": 373,
+    "by_type": {
+      "FEED": 373,
+      "REELS": 0
+    },
+    "fetched": 373,
     "sent": 0,
-    "status": "fetching",
+    "status": "success",
     "target": "南陽醸造"
   },
   "last_run": "2026-11-25T11:47:22.110957+00:00",
-  "last_success": "2026-11-25T11:17:23.354418+00:00",
+  "last_success": "2026-11-25T11:47:27.490438+00:00",
   "pending": null,
   "seen": [
     "18001482514520621",
