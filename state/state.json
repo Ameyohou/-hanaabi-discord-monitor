@@ -7,17 +7,13 @@
   "last_error": null,
   "last_fetch_success": "2026-11-27T08:17:24.355421+00:00",
   "last_result": {
-    "already_seen": 375,
-    "by_type": {
-      "FEED": 375,
-      "REELS": 0
-    },
-    "fetched": 375,
+    "already_seen": 0,
+    "fetched": 0,
     "sent": 0,
-    "status": "success",
+    "status": "fetching",
     "target": "南陽醸造"
   },
-  "last_run": "2026-11-27T08:17:21.422442+00:00",
+  "last_run": "2026-11-27T08:47:25.330017+00:00",
   "last_success": "2026-11-27T08:17:24.356258+00:00",
   "pending": null,
   "seen": [
