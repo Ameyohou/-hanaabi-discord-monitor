@@ -5,17 +5,23 @@
   "initialized": true,
   "last_discord_message_id": "1575659298996887602",
   "last_error": null,
-  "last_fetch_success": "2026-11-27T03:44:52.221918+00:00",
+  "last_fetch_success": "2026-11-27T04:17:24.541162+00:00",
   "last_result": {
-    "already_seen": 0,
-    "fetched": 0,
+    "already_seen": 374,
+    "by_type": {
+      "FEED": 375,
+      "REELS": 0
+    },
+    "fetched": 375,
     "sent": 0,
-    "status": "fetching",
+    "status": "delivery_in_progress",
     "target": "南陽醸造"
   },
   "last_run": "2026-11-27T04:17:19.545567+00:00",
   "last_success": "2026-11-27T03:44:52.222877+00:00",
-  "pending": null,
+  "pending": "18129631651899197",
+  "pending_since": "2026-11-27T04:17:19.545567+00:00",
+  "pending_url": "https://www.instagram.com/p/DgOxy7HTAIb/",
   "seen": [
     "18001482514520621",
     "17988644209627002",
